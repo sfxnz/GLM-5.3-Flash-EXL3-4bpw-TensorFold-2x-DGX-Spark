@@ -49,7 +49,9 @@ VALIDATE_ONLY=1 ./run.sh   # read-only: every check, both docker argvs, exit 1 i
 5. Copies the snapshot to the worker with `rsync -aL` over the direct link when the worker's copy is incomplete, and checks it again there.
 6. Checks the ports and the memory gate, starts rank 1 on the worker, then rank 0 on the head, and waits for `/health`.
 
-When `/health` answers, `run.sh` prints rank 0's startup lines and the endpoint. With the pack already on the head, the first boot took 9 min 54 s, most of it the copy to the worker (`evidence/run/first-boot.txt`). Later boots take about 2.5 min.
+When `/health` answers, `run.sh` prints rank 0's startup lines and the endpoint. From a fresh clone, with nothing cached, `./run.sh` took 34 min 57 s: the HF download, the copy to the worker and the load (`evidence/run/fresh-clone/run.txt`). Later boots take about 2.5 min.
+
+**Restart once after the first download.** On that first boot, 8 streams ran at 36.8 to 41.3 tok/s aggregate instead of about 59, while 1 stream ran at full speed. A plain `./stop.sh && ./run.sh` brought it to 59.7 (`evidence/run/fresh-clone/bench-first-boot.json`, `first-boot-c8-rerun.txt`, `bench-after-restart.json`). We saw this once, on a boot that followed 176 GB of new writes on both nodes, and have not traced the cause. The worker's memory-compaction thread `kcompactd` was busy during the slow runs.
 
 To stop:
 
@@ -280,6 +282,7 @@ Notes on the method:
 - **Tool-call arguments are not streamed.** Streaming GLM tool arguments arrived after 1.2.2 (`evidence/research/research-tensorfold-glm.md`, section 3).
 - **No `max` reasoning effort on the command line.** The native CLI takes `low`, `medium`, `high` and `xhigh`. A per-request `"max"` was not traced (`evidence/research/research-tensorfold-glm.md`, Unknowns).
 - **The archive signature is not checked.** The image build trusts the release archive's sha256. Upstream documents no key for the `.sig` (`evidence/decisions.tsv`, row `image` 13:24:53).
+- **The first boot after a download ran slower at 8 streams.** See [Quick start](#quick-start). Restart once.
 - **If one rank fails, the other stops.** Restart both with `./stop.sh && ./run.sh`.
 
 ## Troubleshooting
@@ -296,6 +299,7 @@ Run `VALIDATE_ONLY=1 ./run.sh` first. Each `REFUSE` line names the cause.
 - **`rank 1 exited` or `rank 0 exited` while waiting.** `run.sh` prints both logs. A `RankMismatch` line means the ranks differ in settings, model, binary or checkpoint digest. Check that both image IDs and both snapshots match.
 - **`no /health after 1200s`.** The ranks must connect within 5 minutes and be ready within 15 (`evidence/research/research-tensorfold-glm.md`, section 5). Read both logs. Raise `READY_TIMEOUT` only if the weights are still loading.
 - **HTTP 400 `maximum context length is 1048576 tokens`.** The rendered prompt, chat template included, leaves no room for a reply. Shorten it.
+- **Multi-stream throughput well below the table right after the first download.** Restart once with `./stop.sh && ./run.sh`.
 - **Empty `content` with thinking on.** The reply reached `max_tokens` while it was still thinking. Raise `max_tokens`, or turn thinking off for that request.
 - **Startup warning `the chat template writes no image placeholder`.** The snapshot has the wrong `chat_template.jinja`. Our pack ships zai-org's. Check the snapshot against the published revision.
 

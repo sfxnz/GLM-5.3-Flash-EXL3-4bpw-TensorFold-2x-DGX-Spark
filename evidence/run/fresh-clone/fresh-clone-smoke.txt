@@ -1,0 +1,8 @@
+PASS  health  {"status": "ok", "model": "glm-5.3-flash", "model_ids": ["glm-5.3-flash"], "max_batch_size": 8, "warming": false, "memory": {"active": 106812521748, "cache": 0, "peak": 106812521748}, "live": {"connections": 0, "waiting": 0, "decode_tokens_per_second": 0.0, "prefill_tokens_per_second": 0.0}, "versio
+PASS  models  {"want": {"id": "glm-5.3-flash", "context_length": 1048576}, "got": {"object": "list", "data": [{"id": "glm-5.3-flash", "object": "model", "created": 1793895545, "owned_by": "tensorfold", "context_length": 1048576, "max_model_len": 1048576, "reasoning": {"default_enabled": true, "supported_efforts":
+PASS  thinking_on  {"status": 200, "reasoning_chars": 74, "content": "391"}
+PASS  thinking_off  {"status": 200, "reasoning_content": "", "content": "391"}
+PASS  vision  {"status": 200, "content": "{\"left\": {\"color\": \"red\", \"shape\": \"square\"}, \"right\": {\"color\": \"blue\", \"shape\": \"circle\"}}"}
+PASS  speculative  {"status": 200, "speculative": {"rounds": 114, "drafted": 222, "accepted": 141, "acceptance_rate": 0.6351351351351351, "tokens_per_round": 2.245614035087719}}
+PASS  concurrent  {"requests": [{"status": 200, "chars": 649, "elapsed_s": 35.8}, {"status": 200, "chars": 614, "elapsed_s": 34.63}, {"status": 200, "chars": 696, "elapsed_s": 34.94}, {"status": 200, "chars": 575, "elapsed_s": 36.15}, {"status": 200, "chars": 696, "elapsed_s": 35.18}, {"status": 200, "chars": 670, "e
+smoke: 7/7 passed
