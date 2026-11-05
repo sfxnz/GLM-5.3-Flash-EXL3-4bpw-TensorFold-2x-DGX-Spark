@@ -1,0 +1,16 @@
+# probe-a (variant A, no --moe_affinity_eps): final lines of glm53-quant-probe-a, captured by the session watcher before the container was removed
+ -- Quantized: model.language_model.layers.3                                                       bpw:  4.27  rfn: 0.022273  cos: 0.000064  sqnr: 50.779224  [1140.90 s]  rss: 34.23 GB
+ -- Quantized: model.language_model.layers.4                                                       bpw:  4.28  rfn: 0.011801  cos: 0.000339  sqnr: 48.248861  [1190.24 s]  rss: 34.27 GB
+ !! --max_module reached, stopping job
+exit=0 oom=false
+4.0K	/home/sfxnz/projects/data/glm53-exl3/probe-a/work/args.json
+32G	/home/sfxnz/projects/data/glm53-exl3/probe-a/work/ckpt
+32G	/home/sfxnz/projects/data/glm53-exl3/probe-a/work/ckpt_old
+4.0K	/home/sfxnz/projects/data/glm53-exl3/probe-a/work/images
+11G	/home/sfxnz/projects/data/glm53-exl3/probe-a/work/qtensors
+-rw-r--r-- 1 sfxnz sfxnz  580635978 Nov  4 14:20 model.language_model.layers.2.safetensors
+-rw-r--r-- 1 sfxnz sfxnz 3940643056 Nov  4 14:41 model.language_model.layers.3.safetensors
+-rw-r--r-- 1 sfxnz sfxnz 3966293817 Nov  4 15:00 model.language_model.layers.4.safetensors
+/dev/nvme0n1p2  3.7T  3.6T   55G  99% /
+
+[exited with code 0]

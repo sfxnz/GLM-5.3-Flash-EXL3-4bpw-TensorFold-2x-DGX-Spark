@@ -1,0 +1,1 @@
+knob bf16-p4-rebench: env [-e TF_GLM_DENSE_BITS=16 -e TF_GLM_HEAD_BITS=16] args [--context 524288 --parallel 4 --vision]

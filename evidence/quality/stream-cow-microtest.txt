@@ -1,0 +1,12 @@
+# quality/memprobe/cow.py on one TR3 shard (layer 10 expert .trellis slices, 4 groups), no suite code; MiB of that shard's mapping
+open {'perms': 'rw-p', 'Rss': 0, 'Anonymous': 0}
+eager views False {'perms': 'rw-p', 'Rss': 1, 'Anonymous': 0}
+cpu read group0 {'perms': 'rw-p', 'Rss': 101, 'Anonymous': 0}
+to(cuda) group0 after cpu read {'perms': 'rw-p', 'Rss': 101, 'Anonymous': 0}
+to(cuda) group1 cold {'perms': 'rw-p', 'Rss': 220, 'Anonymous': 150}
+clone group2 {'perms': 'rw-p', 'Rss': 301, 'Anonymous': 150}
+clone+to(cuda) group2 {'perms': 'rw-p', 'Rss': 301, 'Anonymous': 150}
+dropped tensors {'perms': 'rw-p', 'Rss': 301, 'Anonymous': 150}
+madvise 0 0 0.0099s
+after DONTNEED {'perms': 'rw-p', 'Rss': 0, 'Anonymous': 0}
+refault equal True {'perms': 'rw-p', 'Rss': 125, 'Anonymous': 125}

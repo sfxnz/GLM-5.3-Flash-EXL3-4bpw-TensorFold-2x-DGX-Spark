@@ -1,0 +1,145 @@
+{
+ "a": "default-a1",
+ "b": "bf16-p4-rebench",
+ "corpus": {
+  "version": "nll-corpus-v1",
+  "sha256": "dac2c62844f0f331fb4daa7d7f372a9d7ca861d9f27d4a0d2699388b55cb7c76"
+ },
+ "margin": 0.002,
+ "aa_floor": 0.0,
+ "status": "pass",
+ "rows": [
+  {
+   "group": "all",
+   "unit": "chunk",
+   "units": 41,
+   "tokens": 178793,
+   "nll_a": 0.5815964583668692,
+   "nll_b": 0.5815964583668692,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "top1_agree": 1.0,
+   "identical": 1.0
+  },
+  {
+   "group": "prose",
+   "unit": "chunk",
+   "units": 12,
+   "tokens": 42809,
+   "nll_a": 0.24948551448248243,
+   "nll_b": 0.24948551448248243,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "top1_agree": 1.0,
+   "identical": 1.0
+  },
+  {
+   "group": "multilingual",
+   "unit": "chunk",
+   "units": 11,
+   "tokens": 40864,
+   "nll_a": 1.403499793824313,
+   "nll_b": 1.403499793824313,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "top1_agree": 1.0,
+   "identical": 1.0
+  },
+  {
+   "group": "code",
+   "unit": "chunk",
+   "units": 12,
+   "tokens": 42604,
+   "nll_a": 0.20476059707249064,
+   "nll_b": 0.20476059707249064,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "top1_agree": 1.0,
+   "identical": 1.0
+  },
+  {
+   "group": "math",
+   "unit": "chunk",
+   "units": 5,
+   "tokens": 20369,
+   "nll_a": 0.7046930732241997,
+   "nll_b": 0.7046930732241997,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "top1_agree": 1.0,
+   "identical": 1.0
+  },
+  {
+   "group": "long",
+   "unit": "chunk",
+   "units": 1,
+   "tokens": 32147,
+   "nll_a": 0.40050458612903916,
+   "nll_b": 0.40050458612903916,
+   "delta": 0.0,
+   "ci95": null,
+   "top1_agree": 1.0,
+   "identical": 1.0
+  },
+  {
+   "group": "long@0-4096",
+   "unit": "512-token block",
+   "units": 8,
+   "tokens": 4096,
+   "nll_a": 0.3504936876706779,
+   "nll_b": 0.3504936876706779,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "top1_agree": 1.0,
+   "identical": 1.0
+  },
+  {
+   "group": "long@4096-16384",
+   "unit": "512-token block",
+   "units": 24,
+   "tokens": 12288,
+   "nll_a": 0.38219171358893317,
+   "nll_b": 0.38219171358893317,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "top1_agree": 1.0,
+   "identical": 1.0
+  },
+  {
+   "group": "long@16384-end",
+   "unit": "512-token block",
+   "units": 31,
+   "tokens": 15763,
+   "nll_a": 0.42777561435071465,
+   "nll_b": 0.42777561435071465,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "top1_agree": 1.0,
+   "identical": 1.0
+  }
+ ]
+}

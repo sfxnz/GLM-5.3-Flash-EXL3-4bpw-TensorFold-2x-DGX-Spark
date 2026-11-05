@@ -1,0 +1,222 @@
+ !! Warning: --recipe given, --bits is used for reporting only
+ -- Creating new job
+    Input directory: /home/sfxnz/.cache/huggingface/hub/models--zai-org--GLM-5.3-Flash-BF16/snapshots/f9fed3bbc82291073373d67452e9f25317ef7577
+    Output directory: /home/sfxnz/projects/data/glm53-exl3/probe-a/out
+    Working directory: /home/sfxnz/projects/data/glm53-exl3/probe-a/work
+    Calibration size: 250 rows, 2048 columns
+    Target bitrate: 4.0 (decoder), 16 (head)
+    Recipe: /recipe/experts4.yaml (2 tensors)
+    Output scales: auto
+    Codebook: mcg
+ -- Swapping to system memory disabled (integrated GPU)
+ -- Loaded model config
+    Architecture: Glm5NextForConditionalGeneration
+ -- Created model instance:
+     - Glm5NextModel
+         - Embedding
+         - ExpandStreams
+         - [3x] TransformerBlock
+             - HyperConnection
+                 - RMSNorm
+             - RMSNorm
+             - GatedDeltaNet
+                 - [7x] Linear
+                 - GatedRMSNorm
+             - HyperConnection
+                 - RMSNorm
+             - RMSNorm
+             - GatedMLP
+                 - [3x] Linear
+         - [10x]
+             - TransformerBlock
+                 - HyperConnection
+                     - RMSNorm
+                 - RMSNorm
+                 - MLAttention
+                     - Linear
+                     - RMSNorm
+                     - [2x] Linear
+                     - RMSNorm
+                     - [3x] Linear
+                     - LayerNorm
+                     - Linear
+                 - HyperConnection
+                     - RMSNorm
+                 - RMSNorm
+                 - BlockSparseMLP
+                     - [865x] Linear
+                     - GatedMLP
+                         - [3x] Linear
+             - [3x] TransformerBlock
+                 - HyperConnection
+                     - RMSNorm
+                 - RMSNorm
+                 - GatedDeltaNet
+                     - [7x] Linear
+                     - GatedRMSNorm
+                 - HyperConnection
+                     - RMSNorm
+                 - RMSNorm
+                 - BlockSparseMLP
+                     - [865x] Linear
+                     - GatedMLP
+                         - [3x] Linear
+         - TransformerBlock
+             - HyperConnection
+                 - RMSNorm
+             - RMSNorm
+             - MLAttention
+                 - Linear
+                 - RMSNorm
+                 - [2x] Linear
+                 - RMSNorm
+                 - [3x] Linear
+                 - LayerNorm
+                 - Linear
+             - HyperConnection
+                 - RMSNorm
+             - RMSNorm
+             - BlockSparseMLP
+                 - [865x] Linear
+                 - GatedMLP
+                     - [3x] Linear
+         - TransformerBlock
+             - HyperConnection
+                 - RMSNorm
+             - RMSNorm
+             - GatedDeltaNet
+                 - [7x] Linear
+                 - GatedRMSNorm
+             - HyperConnection
+                 - RMSNorm
+             - RMSNorm
+             - BlockSparseMLP
+                 - [865x] Linear
+                 - GatedMLP
+                     - [3x] Linear
+         - HyperHead
+             - RMSNorm
+         - RMSNorm
+         - Linear
+ -- Created MTP model instance:
+     - Glm5NextMTPModel
+         - Qwen3_5MTPInputLayer
+             - [2x] RMSNorm
+             - Linear
+         - TransformerBlock
+             - RMSNorm
+             - MLAttention
+                 - Linear
+                 - RMSNorm
+                 - [2x] Linear
+                 - RMSNorm
+                 - [3x] Linear
+                 - LayerNorm
+                 - Linear
+             - RMSNorm
+             - BlockSparseMLP
+                 - [865x] Linear
+                 - GatedMLP
+                     - [3x] Linear
+         - RMSNorm
+ -- Loaded tokenizer
+    Vocab size: 154856
+ -- No RoPE settings
+ -- Deciding quantization strategy
+    Applying recipe: /recipe/experts4.yaml
+ -- Quantization strategy, summary:
+     - 4 bpw:
+        model.language_model.layers.*.eh_proj                               1 tensor
+        model.language_model.layers.*.mlp.experts.*.down_proj          12,384 tensors
+        model.language_model.layers.*.mlp.experts.*.gate_proj          12,384 tensors
+        model.language_model.layers.*.mlp.experts.*.up_proj            12,384 tensors
+        model.language_model.layers.*.mlp.shared_experts.down_proj          1 tensor
+        model.language_model.layers.*.mlp.shared_experts.gate_proj          1 tensor
+        model.language_model.layers.*.mlp.shared_experts.up_proj            1 tensor
+        model.language_model.layers.*.self_attn.indexer.wq_b                1 tensor
+        model.language_model.layers.*.self_attn.kv_a_proj_with_mqa          1 tensor
+        model.language_model.layers.*.self_attn.o_proj                      1 tensor
+        model.language_model.layers.*.self_attn.q_a_proj                    1 tensor
+        model.language_model.layers.*.self_attn.q_b_proj                    1 tensor
+     - 16 bpw:
+        lm_head                                                             1 tensor
+        model.language_model.layers.*.mlp.down_proj                         3 tensors
+        model.language_model.layers.*.mlp.gate_proj                         3 tensors
+        model.language_model.layers.*.mlp.shared_experts.down_proj         42 tensors
+        model.language_model.layers.*.mlp.shared_experts.gate_proj         42 tensors
+        model.language_model.layers.*.mlp.shared_experts.up_proj           42 tensors
+        model.language_model.layers.*.mlp.up_proj                           3 tensors
+        model.language_model.layers.*.self_attn.indexer.wq_b               11 tensors
+        model.language_model.layers.*.self_attn.kv_a_proj_with_mqa         11 tensors
+        model.language_model.layers.*.self_attn.o_proj                     45 tensors
+        model.language_model.layers.*.self_attn.q_a_proj                   11 tensors
+        model.language_model.layers.*.self_attn.q_b_proj                   11 tensors
+        model.language_model.layers.*.self_attn.qkv_proj                   34 tensors
+ -- Final bitrate (excluding head): 4.00
+ -- Preparing input state
+ -- Loading unquantized module: model.language_model.embed_tokens
+
+ -- Quantized: model.language_model.embed_tokens                                                   bpw: 16.00  rfn: 0.000000  cos: 0.000000  sqnr: 0.000000  [2.44 s]  rss: 10.37 GB
+ -- Loading unquantized module: hc_expand
+
+ -- Quantized: hc_expand                                                                           no_weights  rfn: 0.000000  cos: 0.000000  sqnr: 0.000000  [299.38 s]  rss: 33.26 GB
+ -- Saving checkpoint
+ -- Loading unquantized module: model.language_model.layers.0
+     - Cloned model.language_model.layers.0.self_attn.qkv_proj from ['model.language_model.layers.0.self_attn.q_proj', 'model.language_model.layers.0.self_attn.k_proj', 'model.language_model.layers.0.self_attn.v_proj']
+ -- Capturing in 2 passes: 0.5 GB of Hessians, 0.3 GB free
+
+
+ -- Captured: model.language_model.layers.0
+ -- Hessians: block.attn.input, block.attn.output, block.mlp.down, block.mlp.input
+ -- Unquantized: model.language_model.layers.0.self_attn.qkv_proj                                  bpw: 16.00
+ -- Unquantized: model.language_model.layers.0.self_attn.o_proj                                    bpw: 16.00
+ -- Unquantized: model.language_model.layers.0.mlp.up_proj                                         bpw: 16.00
+ -- Unquantized: model.language_model.layers.0.mlp.gate_proj                                       bpw: 16.00
+ -- Unquantized: model.language_model.layers.0.mlp.down_proj                                       bpw: 16.00
+
+ -- Quantized: model.language_model.layers.0                                                       bpw: 16.05  rfn: 0.000000  cos: 0.000000  sqnr: 69.983395  [187.13 s]  rss: 33.78 GB
+ -- Estimated remaining time: warming up (1/3 timed blocks)
+ -- Saving checkpoint
+ -- Loading unquantized module: model.language_model.layers.1
+     - Cloned model.language_model.layers.1.self_attn.qkv_proj from ['model.language_model.layers.1.self_attn.q_proj', 'model.language_model.layers.1.self_attn.k_proj', 'model.language_model.layers.1.self_attn.v_proj']
+ -- Capturing in 2 passes: 0.5 GB of Hessians, 0.3 GB free
+
+
+ -- Captured: model.language_model.layers.1
+ -- Hessians: block.attn.input, block.attn.output, block.mlp.down, block.mlp.input
+ -- Unquantized: model.language_model.layers.1.self_attn.qkv_proj                                  bpw: 16.00
+ -- Unquantized: model.language_model.layers.1.self_attn.o_proj                                    bpw: 16.00
+ -- Unquantized: model.language_model.layers.1.mlp.up_proj                                         bpw: 16.00
+ -- Unquantized: model.language_model.layers.1.mlp.gate_proj                                       bpw: 16.00
+ -- Unquantized: model.language_model.layers.1.mlp.down_proj                                       bpw: 16.00
+
+ -- Quantized: model.language_model.layers.1                                                       bpw: 16.05  rfn: 0.000000  cos: 0.000000  sqnr: 68.460814  [145.19 s]  rss: 33.78 GB
+ -- Estimated remaining time: warming up (2/3 timed blocks)
+ -- Saving checkpoint
+ -- Loading unquantized module: model.language_model.layers.2
+     - Cloned model.language_model.layers.2.self_attn.qkv_proj from ['model.language_model.layers.2.self_attn.q_proj', 'model.language_model.layers.2.self_attn.k_proj', 'model.language_model.layers.2.self_attn.v_proj']
+ -- Capturing in 2 passes: 0.5 GB of Hessians, 0.3 GB free
+
+
+ -- Captured: model.language_model.layers.2
+ -- Hessians: block.attn.input, block.attn.output, block.mlp.down, block.mlp.input
+ -- Unquantized: model.language_model.layers.2.self_attn.qkv_proj                                  bpw: 16.00
+ -- Unquantized: model.language_model.layers.2.self_attn.o_proj                                    bpw: 16.00
+ -- Unquantized: model.language_model.layers.2.mlp.up_proj                                         bpw: 16.00
+ -- Unquantized: model.language_model.layers.2.mlp.gate_proj                                       bpw: 16.00
+ -- Unquantized: model.language_model.layers.2.mlp.down_proj                                       bpw: 16.00
+
+ -- Quantized: model.language_model.layers.2                                                       bpw: 16.05  rfn: 0.000000  cos: 0.000000  sqnr: 72.737610  [144.93 s]  rss: 33.78 GB
+ -- Estimated remaining time: 1 hour, 59 minutes (avg over last 3 blocks)
+ -- Saving checkpoint
+ -- Loading unquantized module: model.language_model.layers.3
+usage: convert.py [-h] [-diagnostic [{all,fail,success,info,suggestion}]]
+
+Process diagnostic status.
+
+options:
+  -h, --help            show this help message and exit
+  -diagnostic [{all,fail,success,info,suggestion}]
+                        Set diagnostic status (fail, success, info,
+                        suggestion).
+

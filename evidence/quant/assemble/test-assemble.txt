@@ -1,0 +1,14 @@
+# python3 -I quant/test_assemble.py <empty scratch dir>   2026-11-04T15:37:23Z
+extract: non-expert tensors byte-equal in source order, non-weight files and index copied
+assemble: check_layout PASS, verify PASS, expert parts byte-equal to qtensors, exllamav3 extras left out, bits int 4
+deterministic: rerun in place and a fresh dir give identical bytes; a truncated shard and a stale .tmp converge
+refuses missing_mtp_svh: layer 2: 1 expert parts missing, e.g. ['model.language_model.layers.2.mlp.experts.1.down_proj.svh']; 0 unexpected (packed su/sv, bias or mul1 need a converter), e.g. []
+refuses missing_mtp_layer: layer 2: <scratch>/q-missing_mtp_layer/model.language_model.layers.2.safetensors missing
+refuses packed_su_sv: layer 1: 0 expert parts missing, e.g. []; 1 unexpected (packed su/sv, bias or mul1 need a converter), e.g. ['model.language_model.layers.1.mlp.experts.0.up_proj.su']
+refuses mul1_marker: <scratch>/q-mul1_marker/model.language_model.layers.2.safetensors: model.language_model.layers.2.mlp.experts.1.down_proj.mcg is not the I32 mcg marker ed1faccb
+refuses trellis_shape: <scratch>/q-trellis_shape/model.language_model.layers.2.safetensors: model.language_model.layers.2.mlp.experts.1.down_proj.trellis is I16 [2, 8, 32], want I16 [2, 8, 64]
+refuses suh_f32: <scratch>/q-suh_f32/model.language_model.layers.2.safetensors: model.language_model.layers.2.mlp.experts.1.down_proj.suh is F32 [32], want F16 [32]
+verify catches a flipped byte: model-00003-of-00003.safetensors: model.language_model.layers.2.mlp.experts.1.up_proj.trellis differs from <scratch>/qtensors/model.language_model.layers.2.safetensors
+partial: shards 1,3 with --layers 0,2 pass check_layout --layers 0,2 and fail the full check and --layers 0,1,2
+ALL ASSEMBLER TESTS PASS
+exit 0

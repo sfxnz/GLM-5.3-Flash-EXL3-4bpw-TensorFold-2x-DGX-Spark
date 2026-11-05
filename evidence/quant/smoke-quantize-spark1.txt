@@ -1,0 +1,43 @@
+# docker run --rm --gpus all --network none --memory 16g --user 1000:1000 -e HOME=/tmp --entrypoint env glm53-quant:exl3-1.6.6 -u TORCH_ALLOW_TF32_CUBLAS_OVERRIDE python3 /opt/glm53-quant/smoke_quantize.py  (node spark1, image sha256:07d5586f2972e846bd7b8438d9d956c0b13957fd599107bcbfa71145ae204c88)
+host=13a40471690f image_commit=bd1f519172406a9560bd5c90e61000691bb69a07
+{
+ "exllamav3": "1.6.6",
+ "torch": "2.13.0a0+9186a08b2c.nv26.07",
+ "device": "NVIDIA GB10",
+ "capability": [
+  12,
+  1
+ ],
+ "tensors": {
+  "suh": [
+   "float16",
+   [
+    512
+   ]
+  ],
+  "svh": [
+   "float16",
+   [
+    512
+   ]
+  ],
+  "trellis": [
+   "int16",
+   [
+    32,
+    32,
+    64
+   ]
+  ],
+  "mcg": [
+   "int32",
+   []
+  ]
+ },
+ "mcg_marker_hex": "0xcbac1fed",
+ "proxy_err": 0.004269668884878232,
+ "weight_nmse": 0.004840667825192213,
+ "output_nmse": 0.004268178250640631
+}
+SMOKE PASS
+exit=0

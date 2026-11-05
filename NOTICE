@@ -1,0 +1,27 @@
+GLM-5.3-Flash-EXL3-4bpw-TensorFold-2x-DGX-Spark
+Copyright 2026 sfxnz
+https://github.com/sfxnz/GLM-5.3-Flash-EXL3-4bpw-TensorFold-2x-DGX-Spark
+
+This recipe's own files are MIT-licensed (LICENSE). One part contains lines from another project:
+
+- quality/patches/0001-mcg-marker-rank1.patch, quality/patches/0002-drop-private-shard-pages.patch
+  Our changes to malaiwah/quant-fidelity-suite at cf36287c51a18e9361e009ca00a21eb8c0021ab1. The diff context lines
+  are that project's code. Its LICENSE: "MIT License" / "Copyright (c) 2026 Michel Belleau".
+
+Not included. Each user fetches these under their own terms:
+- TensorFold 1.2.2 (Apache-2.0, https://github.com/ashhart/TensorFold). docker/Dockerfile installs the release
+  archive tensorfold-1.2.2-linux-aarch64.tar.gz. Its NOTICE and THIRD_PARTY_NOTICES.md ship inside it.
+- libjpeg-turbo 3.1.4.1 and libwebp 1.6.0, which docker/Dockerfile downloads, and the Ubuntu and NVIDIA packages it
+  installs on nvidia/cuda:13.0.0-base-ubuntu24.04, each under its own license.
+- exllamav3 v1.6.6 (MIT, https://github.com/turboderp-org/exllamav3), which quant/Dockerfile builds from a clone.
+- malaiwah/quant-fidelity-suite (MIT), which quality/Dockerfile builds from a clone, and the dataset
+  malaiwah/glm53-flash-fidelity-root-v1 (MIT).
+- The NVIDIA PyTorch container nvcr.io/nvidia/pytorch:26.07-py3 (NVIDIA Deep Learning Container License), the base
+  of quant/Dockerfile and quality/Dockerfile.
+- The weights sfxnz/GLM-5.3-Flash-EXL3-4bpw, derived from zai-org/GLM-5.3-Flash-BF16 (MIT, Copyright (c) 2026 Z.AI
+  Co., Ltd).
+
+Not used by default: incoai/GLM-5.3-Flash-DFlash2 (CC BY-NC-ND). run.sh never downloads it.
+
+Used only as a measured control, not redistributed: brandonmusic/GLM-5.3-Flash-tr3-4bpw, under its own attribution
+license. This repository holds none of its bytes and none of its code.

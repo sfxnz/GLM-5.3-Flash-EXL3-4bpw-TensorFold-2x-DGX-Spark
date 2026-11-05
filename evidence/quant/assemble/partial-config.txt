@@ -1,0 +1,11 @@
+# config.json quantization_config and source-file equality, partial pack
+quantization_config {"quant_method": "exl3", "bits": 4, "codebook": "mcg", "head_bits": 16} bits type int
+raw text contains "bits": 4, True
+rest of config equals the source config: True
+chat_template.jinja byte-equal to source copy
+tokenizer.json byte-equal to source copy
+tokenizer_config.json byte-equal to source copy
+processor_config.json byte-equal to source copy
+generation_config.json byte-equal to source copy
+LICENSE byte-equal to source copy
+image placeholder lines in chat_template.jinja: 3

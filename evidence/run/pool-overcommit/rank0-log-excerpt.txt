@@ -1,0 +1,11 @@
+# Lines read from `docker logs tf-glm53-rank0` (grep -i 'wait|page|pool|error|warn', last 8) after the three concurrent
+# 416,767-token needles finished, 2026-11-05 ~13:05Z. Transcribed from the session; the container was removed later by
+# stop.sh, so this is not a raw capture.
+info: kv pool idle: promised 0, free 2056 + store 0 == total 2056
+info: kv pool idle: promised 0, free 2056 + store 0 == total 2056
+warning: prompt cache: kept nothing at 415744 tokens: 5358 MiB passes the 2665 MiB budget
+info: kv pool idle: promised 0, free 2056 + store 0 == total 2056
+warning: prompt cache: kept nothing at 415744 tokens: 5358 MiB passes the 2665 MiB budget
+warning: prompt cache: kept nothing at 415744 tokens: 5358 MiB passes the 2665 MiB budget
+warning: prompt cache: kept nothing at 415744 tokens: 5358 MiB passes the 2665 MiB budget
+info: kv pool idle: promised 0, free 2056 + store 0 == total 2056

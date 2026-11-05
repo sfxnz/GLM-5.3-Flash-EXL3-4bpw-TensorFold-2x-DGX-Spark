@@ -1,0 +1,2 @@
+stopped and removed tf-glm53-rank0 on spark1
+stopped and removed tf-glm53-rank1 on spark2

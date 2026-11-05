@@ -1,0 +1,6 @@
+# python3 -I quant/assemble.py verify /home/sfxnz/projects/data/glm53-exl3/assemble-partial/pack /home/sfxnz/projects/data/glm53-exl3/assemble-partial/extract /home/sfxnz/projects/data/glm53-exl3/assemble-partial/qtensors
+# 2026-11-04T15:33:44Z on spark1
+verify: 10 shards, 577 non-expert tensors sha256-equal to the source, 6912 expert parts byte-equal to qtensors, config bits 4, 5 s
+VERIFY PASS
+wall 5.34 s
+exit 0

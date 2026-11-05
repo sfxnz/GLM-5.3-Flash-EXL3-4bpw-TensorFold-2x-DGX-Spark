@@ -1,0 +1,1074 @@
+{
+  "settings": {
+    "url": "http://127.0.0.1:8000",
+    "model": "glm-5.3-flash",
+    "concurrency": [
+      1,
+      4,
+      8
+    ],
+    "runs": 5,
+    "max_tokens": 512,
+    "thinking": false,
+    "ignore_eos": true,
+    "started": "2026-11-05T08:29:18Z"
+  },
+  "runs": [
+    {
+      "concurrency": 1,
+      "wall_s": 15.154,
+      "errors": 0,
+      "aggregate_tok_s": 33.79,
+      "streams": [
+        {
+          "ttft_s": 0.2,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 34.17,
+          "wall_s": 15.153,
+          "speculative": {
+            "rounds": 269,
+            "drafted": 393,
+            "accepted": 242,
+            "acceptance_rate": 0.6157760814249363,
+            "tokens_per_round": 1.903345724907063
+          }
+        }
+      ]
+    },
+    {
+      "concurrency": 1,
+      "wall_s": 14.161,
+      "errors": 0,
+      "aggregate_tok_s": 36.16,
+      "streams": [
+        {
+          "ttft_s": 0.177,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 36.55,
+          "wall_s": 14.16,
+          "speculative": {
+            "rounds": 238,
+            "drafted": 443,
+            "accepted": 273,
+            "acceptance_rate": 0.6162528216704289,
+            "tokens_per_round": 2.1512605042016806
+          }
+        }
+      ]
+    },
+    {
+      "concurrency": 1,
+      "wall_s": 15.828,
+      "errors": 0,
+      "aggregate_tok_s": 32.35,
+      "streams": [
+        {
+          "ttft_s": 0.175,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 32.65,
+          "wall_s": 15.828,
+          "speculative": {
+            "rounds": 279,
+            "drafted": 395,
+            "accepted": 233,
+            "acceptance_rate": 0.589873417721519,
+            "tokens_per_round": 1.8351254480286738
+          }
+        }
+      ]
+    },
+    {
+      "concurrency": 1,
+      "wall_s": 14.952,
+      "errors": 0,
+      "aggregate_tok_s": 34.24,
+      "streams": [
+        {
+          "ttft_s": 0.173,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 34.58,
+          "wall_s": 14.952,
+          "speculative": {
+            "rounds": 268,
+            "drafted": 382,
+            "accepted": 244,
+            "acceptance_rate": 0.6387434554973822,
+            "tokens_per_round": 1.9104477611940298
+          }
+        }
+      ]
+    },
+    {
+      "concurrency": 1,
+      "wall_s": 15.582,
+      "errors": 0,
+      "aggregate_tok_s": 32.86,
+      "streams": [
+        {
+          "ttft_s": 0.174,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 33.17,
+          "wall_s": 15.582,
+          "speculative": {
+            "rounds": 264,
+            "drafted": 387,
+            "accepted": 248,
+            "acceptance_rate": 0.6408268733850129,
+            "tokens_per_round": 1.9393939393939394
+          }
+        }
+      ]
+    },
+    {
+      "concurrency": 4,
+      "wall_s": 45.37,
+      "errors": 0,
+      "aggregate_tok_s": 45.14,
+      "streams": [
+        {
+          "ttft_s": 0.178,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 12.15,
+          "wall_s": 42.249,
+          "speculative": {
+            "rounds": 220,
+            "drafted": 656,
+            "accepted": 291,
+            "acceptance_rate": 0.44359756097560976,
+            "tokens_per_round": 2.327272727272727
+          }
+        },
+        {
+          "ttft_s": 1.305,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 12.43,
+          "wall_s": 42.419,
+          "speculative": {
+            "rounds": 222,
+            "drafted": 659,
+            "accepted": 289,
+            "acceptance_rate": 0.4385432473444613,
+            "tokens_per_round": 2.3063063063063063
+          }
+        },
+        {
+          "ttft_s": 1.019,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 11.52,
+          "wall_s": 45.368,
+          "speculative": {
+            "rounds": 278,
+            "drafted": 725,
+            "accepted": 234,
+            "acceptance_rate": 0.32275862068965516,
+            "tokens_per_round": 1.841726618705036
+          }
+        },
+        {
+          "ttft_s": 0.521,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 13.64,
+          "wall_s": 37.984,
+          "speculative": {
+            "rounds": 190,
+            "drafted": 567,
+            "accepted": 321,
+            "acceptance_rate": 0.5661375661375662,
+            "tokens_per_round": 2.694736842105263
+          }
+        }
+      ]
+    },
+    {
+      "concurrency": 4,
+      "wall_s": 41.969,
+      "errors": 0,
+      "aggregate_tok_s": 48.8,
+      "streams": [
+        {
+          "ttft_s": 0.177,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 13.13,
+          "wall_s": 39.099,
+          "speculative": {
+            "rounds": 220,
+            "drafted": 657,
+            "accepted": 291,
+            "acceptance_rate": 0.4429223744292237,
+            "tokens_per_round": 2.327272727272727
+          }
+        },
+        {
+          "ttft_s": 0.767,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 13.48,
+          "wall_s": 38.683,
+          "speculative": {
+            "rounds": 216,
+            "drafted": 645,
+            "accepted": 295,
+            "acceptance_rate": 0.4573643410852713,
+            "tokens_per_round": 2.3703703703703702
+          }
+        },
+        {
+          "ttft_s": 0.557,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 12.34,
+          "wall_s": 41.968,
+          "speculative": {
+            "rounds": 274,
+            "drafted": 720,
+            "accepted": 237,
+            "acceptance_rate": 0.32916666666666666,
+            "tokens_per_round": 1.8686131386861313
+          }
+        },
+        {
+          "ttft_s": 0.358,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 13.38,
+          "wall_s": 38.538,
+          "speculative": {
+            "rounds": 215,
+            "drafted": 642,
+            "accepted": 296,
+            "acceptance_rate": 0.46105919003115264,
+            "tokens_per_round": 2.3813953488372093
+          }
+        }
+      ]
+    },
+    {
+      "concurrency": 4,
+      "wall_s": 44.901,
+      "errors": 0,
+      "aggregate_tok_s": 45.61,
+      "streams": [
+        {
+          "ttft_s": 0.574,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 12.16,
+          "wall_s": 42.598,
+          "speculative": {
+            "rounds": 225,
+            "drafted": 671,
+            "accepted": 286,
+            "acceptance_rate": 0.4262295081967213,
+            "tokens_per_round": 2.2755555555555556
+          }
+        },
+        {
+          "ttft_s": 0.781,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 12.37,
+          "wall_s": 42.097,
+          "speculative": {
+            "rounds": 220,
+            "drafted": 657,
+            "accepted": 291,
+            "acceptance_rate": 0.4429223744292237,
+            "tokens_per_round": 2.327272727272727
+          }
+        },
+        {
+          "ttft_s": 0.201,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 11.43,
+          "wall_s": 44.899,
+          "speculative": {
+            "rounds": 270,
+            "drafted": 721,
+            "accepted": 241,
+            "acceptance_rate": 0.3342579750346741,
+            "tokens_per_round": 1.8962962962962964
+          }
+        },
+        {
+          "ttft_s": 0.384,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 12.5,
+          "wall_s": 41.266,
+          "speculative": {
+            "rounds": 214,
+            "drafted": 637,
+            "accepted": 297,
+            "acceptance_rate": 0.4662480376766091,
+            "tokens_per_round": 2.392523364485981
+          }
+        }
+      ]
+    },
+    {
+      "concurrency": 4,
+      "wall_s": 44.998,
+      "errors": 0,
+      "aggregate_tok_s": 45.51,
+      "streams": [
+        {
+          "ttft_s": 0.175,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 11.87,
+          "wall_s": 43.227,
+          "speculative": {
+            "rounds": 230,
+            "drafted": 687,
+            "accepted": 281,
+            "acceptance_rate": 0.4090247452692867,
+            "tokens_per_round": 2.226086956521739
+          }
+        },
+        {
+          "ttft_s": 0.754,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 11.93,
+          "wall_s": 43.593,
+          "speculative": {
+            "rounds": 234,
+            "drafted": 695,
+            "accepted": 277,
+            "acceptance_rate": 0.3985611510791367,
+            "tokens_per_round": 2.1880341880341883
+          }
+        },
+        {
+          "ttft_s": 0.548,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 11.5,
+          "wall_s": 44.996,
+          "speculative": {
+            "rounds": 261,
+            "drafted": 730,
+            "accepted": 250,
+            "acceptance_rate": 0.3424657534246575,
+            "tokens_per_round": 1.9616858237547892
+          }
+        },
+        {
+          "ttft_s": 0.354,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 12.5,
+          "wall_s": 41.246,
+          "speculative": {
+            "rounds": 216,
+            "drafted": 645,
+            "accepted": 295,
+            "acceptance_rate": 0.4573643410852713,
+            "tokens_per_round": 2.3703703703703702
+          }
+        }
+      ]
+    },
+    {
+      "concurrency": 4,
+      "wall_s": 45.968,
+      "errors": 0,
+      "aggregate_tok_s": 44.55,
+      "streams": [
+        {
+          "ttft_s": 0.555,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 12.06,
+          "wall_s": 42.936,
+          "speculative": {
+            "rounds": 230,
+            "drafted": 685,
+            "accepted": 281,
+            "acceptance_rate": 0.41021897810218977,
+            "tokens_per_round": 2.226086956521739
+          }
+        },
+        {
+          "ttft_s": 0.192,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 11.89,
+          "wall_s": 43.171,
+          "speculative": {
+            "rounds": 232,
+            "drafted": 689,
+            "accepted": 279,
+            "acceptance_rate": 0.40493468795355586,
+            "tokens_per_round": 2.206896551724138
+          }
+        },
+        {
+          "ttft_s": 0.754,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 11.3,
+          "wall_s": 45.967,
+          "speculative": {
+            "rounds": 271,
+            "drafted": 743,
+            "accepted": 240,
+            "acceptance_rate": 0.32301480484522205,
+            "tokens_per_round": 1.8892988929889298
+          }
+        },
+        {
+          "ttft_s": 0.373,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 13.56,
+          "wall_s": 38.056,
+          "speculative": {
+            "rounds": 200,
+            "drafted": 595,
+            "accepted": 311,
+            "acceptance_rate": 0.5226890756302521,
+            "tokens_per_round": 2.56
+          }
+        }
+      ]
+    },
+    {
+      "concurrency": 8,
+      "wall_s": 79.022,
+      "errors": 0,
+      "aggregate_tok_s": 51.83,
+      "streams": [
+        {
+          "ttft_s": 0.219,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 6.81,
+          "wall_s": 75.255,
+          "speculative": {
+            "rounds": 229,
+            "drafted": 682,
+            "accepted": 282,
+            "acceptance_rate": 0.41348973607038125,
+            "tokens_per_round": 2.2358078602620086
+          }
+        },
+        {
+          "ttft_s": 1.746,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 6.95,
+          "wall_s": 75.254,
+          "speculative": {
+            "rounds": 229,
+            "drafted": 680,
+            "accepted": 282,
+            "acceptance_rate": 0.4147058823529412,
+            "tokens_per_round": 2.2358078602620086
+          }
+        },
+        {
+          "ttft_s": 1.242,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 6.57,
+          "wall_s": 79.02,
+          "speculative": {
+            "rounds": 278,
+            "drafted": 777,
+            "accepted": 234,
+            "acceptance_rate": 0.30115830115830117,
+            "tokens_per_round": 1.841726618705036
+          }
+        },
+        {
+          "ttft_s": 0.419,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 7.28,
+          "wall_s": 70.627,
+          "speculative": {
+            "rounds": 208,
+            "drafted": 618,
+            "accepted": 303,
+            "acceptance_rate": 0.49029126213592233,
+            "tokens_per_round": 2.4615384615384617
+          }
+        },
+        {
+          "ttft_s": 1.491,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 6.78,
+          "wall_s": 76.879,
+          "speculative": {
+            "rounds": 241,
+            "drafted": 716,
+            "accepted": 270,
+            "acceptance_rate": 0.3770949720670391,
+            "tokens_per_round": 2.12448132780083
+          }
+        },
+        {
+          "ttft_s": 0.995,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 6.99,
+          "wall_s": 74.116,
+          "speculative": {
+            "rounds": 223,
+            "drafted": 664,
+            "accepted": 288,
+            "acceptance_rate": 0.43373493975903615,
+            "tokens_per_round": 2.295964125560538
+          }
+        },
+        {
+          "ttft_s": 0.8,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 6.68,
+          "wall_s": 77.277,
+          "speculative": {
+            "rounds": 245,
+            "drafted": 733,
+            "accepted": 266,
+            "acceptance_rate": 0.36289222373806274,
+            "tokens_per_round": 2.089795918367347
+          }
+        },
+        {
+          "ttft_s": 0.607,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 7.27,
+          "wall_s": 70.879,
+          "speculative": {
+            "rounds": 209,
+            "drafted": 623,
+            "accepted": 302,
+            "acceptance_rate": 0.48475120385232745,
+            "tokens_per_round": 2.449760765550239
+          }
+        }
+      ]
+    },
+    {
+      "concurrency": 8,
+      "wall_s": 69.707,
+      "errors": 0,
+      "aggregate_tok_s": 58.76,
+      "streams": [
+        {
+          "ttft_s": 0.173,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 7.7,
+          "wall_s": 66.561,
+          "speculative": {
+            "rounds": 229,
+            "drafted": 680,
+            "accepted": 282,
+            "acceptance_rate": 0.4147058823529412,
+            "tokens_per_round": 2.2358078602620086
+          }
+        },
+        {
+          "ttft_s": 1.52,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 7.82,
+          "wall_s": 66.888,
+          "speculative": {
+            "rounds": 231,
+            "drafted": 690,
+            "accepted": 280,
+            "acceptance_rate": 0.4057971014492754,
+            "tokens_per_round": 2.2164502164502164
+          }
+        },
+        {
+          "ttft_s": 1.119,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 7.46,
+          "wall_s": 69.594,
+          "speculative": {
+            "rounds": 256,
+            "drafted": 764,
+            "accepted": 255,
+            "acceptance_rate": 0.3337696335078534,
+            "tokens_per_round": 2.0
+          }
+        },
+        {
+          "ttft_s": 0.354,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 8.24,
+          "wall_s": 62.348,
+          "speculative": {
+            "rounds": 210,
+            "drafted": 627,
+            "accepted": 301,
+            "acceptance_rate": 0.4800637958532695,
+            "tokens_per_round": 2.4380952380952383
+          }
+        },
+        {
+          "ttft_s": 1.318,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 7.72,
+          "wall_s": 67.528,
+          "speculative": {
+            "rounds": 236,
+            "drafted": 702,
+            "accepted": 275,
+            "acceptance_rate": 0.39173789173789175,
+            "tokens_per_round": 2.169491525423729
+          }
+        },
+        {
+          "ttft_s": 0.925,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 7.96,
+          "wall_s": 65.16,
+          "speculative": {
+            "rounds": 222,
+            "drafted": 664,
+            "accepted": 289,
+            "acceptance_rate": 0.4352409638554217,
+            "tokens_per_round": 2.3063063063063063
+          }
+        },
+        {
+          "ttft_s": 0.73,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 7.41,
+          "wall_s": 69.703,
+          "speculative": {
+            "rounds": 258,
+            "drafted": 769,
+            "accepted": 254,
+            "acceptance_rate": 0.33029908972691807,
+            "tokens_per_round": 1.9844961240310077
+          }
+        },
+        {
+          "ttft_s": 0.54,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 8.27,
+          "wall_s": 62.346,
+          "speculative": {
+            "rounds": 210,
+            "drafted": 627,
+            "accepted": 301,
+            "acceptance_rate": 0.4800637958532695,
+            "tokens_per_round": 2.4380952380952383
+          }
+        }
+      ]
+    },
+    {
+      "concurrency": 8,
+      "wall_s": 68.758,
+      "errors": 0,
+      "aggregate_tok_s": 59.57,
+      "streams": [
+        {
+          "ttft_s": 0.935,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 8.07,
+          "wall_s": 64.244,
+          "speculative": {
+            "rounds": 224,
+            "drafted": 669,
+            "accepted": 287,
+            "acceptance_rate": 0.4289985052316891,
+            "tokens_per_round": 2.2857142857142856
+          }
+        },
+        {
+          "ttft_s": 1.531,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 7.95,
+          "wall_s": 65.773,
+          "speculative": {
+            "rounds": 233,
+            "drafted": 692,
+            "accepted": 278,
+            "acceptance_rate": 0.40173410404624277,
+            "tokens_per_round": 2.1974248927038627
+          }
+        },
+        {
+          "ttft_s": 0.19,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 7.45,
+          "wall_s": 68.757,
+          "speculative": {
+            "rounds": 274,
+            "drafted": 768,
+            "accepted": 237,
+            "acceptance_rate": 0.30859375,
+            "tokens_per_round": 1.8686131386861313
+          }
+        },
+        {
+          "ttft_s": 0.372,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 8.56,
+          "wall_s": 60.045,
+          "speculative": {
+            "rounds": 205,
+            "drafted": 613,
+            "accepted": 306,
+            "acceptance_rate": 0.499184339314845,
+            "tokens_per_round": 2.497560975609756
+          }
+        },
+        {
+          "ttft_s": 1.329,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 7.85,
+          "wall_s": 66.444,
+          "speculative": {
+            "rounds": 238,
+            "drafted": 710,
+            "accepted": 273,
+            "acceptance_rate": 0.3845070422535211,
+            "tokens_per_round": 2.1512605042016806
+          }
+        },
+        {
+          "ttft_s": 1.129,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 8.31,
+          "wall_s": 62.607,
+          "speculative": {
+            "rounds": 216,
+            "drafted": 645,
+            "accepted": 295,
+            "acceptance_rate": 0.4573643410852713,
+            "tokens_per_round": 2.3703703703703702
+          }
+        },
+        {
+          "ttft_s": 0.745,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 7.68,
+          "wall_s": 67.298,
+          "speculative": {
+            "rounds": 246,
+            "drafted": 736,
+            "accepted": 265,
+            "acceptance_rate": 0.360054347826087,
+            "tokens_per_round": 2.0813008130081303
+          }
+        },
+        {
+          "ttft_s": 0.559,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 8.98,
+          "wall_s": 57.445,
+          "speculative": {
+            "rounds": 195,
+            "drafted": 579,
+            "accepted": 316,
+            "acceptance_rate": 0.5457685664939551,
+            "tokens_per_round": 2.6256410256410256
+          }
+        }
+      ]
+    },
+    {
+      "concurrency": 8,
+      "wall_s": 67.158,
+      "errors": 0,
+      "aggregate_tok_s": 60.99,
+      "streams": [
+        {
+          "ttft_s": 0.177,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 7.93,
+          "wall_s": 64.645,
+          "speculative": {
+            "rounds": 227,
+            "drafted": 674,
+            "accepted": 284,
+            "acceptance_rate": 0.42136498516320475,
+            "tokens_per_round": 2.2555066079295156
+          }
+        },
+        {
+          "ttft_s": 1.527,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 8.01,
+          "wall_s": 65.316,
+          "speculative": {
+            "rounds": 232,
+            "drafted": 693,
+            "accepted": 279,
+            "acceptance_rate": 0.4025974025974026,
+            "tokens_per_round": 2.206896551724138
+          }
+        },
+        {
+          "ttft_s": 1.324,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 7.76,
+          "wall_s": 67.155,
+          "speculative": {
+            "rounds": 266,
+            "drafted": 738,
+            "accepted": 245,
+            "acceptance_rate": 0.3319783197831978,
+            "tokens_per_round": 1.9248120300751879
+          }
+        },
+        {
+          "ttft_s": 0.36,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 8.69,
+          "wall_s": 59.183,
+          "speculative": {
+            "rounds": 201,
+            "drafted": 601,
+            "accepted": 310,
+            "acceptance_rate": 0.5158069883527454,
+            "tokens_per_round": 2.5472636815920398
+          }
+        },
+        {
+          "ttft_s": 1.122,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 8.0,
+          "wall_s": 64.965,
+          "speculative": {
+            "rounds": 229,
+            "drafted": 683,
+            "accepted": 282,
+            "acceptance_rate": 0.4128843338213763,
+            "tokens_per_round": 2.2358078602620086
+          }
+        },
+        {
+          "ttft_s": 0.925,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 8.57,
+          "wall_s": 60.573,
+          "speculative": {
+            "rounds": 207,
+            "drafted": 616,
+            "accepted": 304,
+            "acceptance_rate": 0.4935064935064935,
+            "tokens_per_round": 2.473429951690821
+          }
+        },
+        {
+          "ttft_s": 0.732,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 7.92,
+          "wall_s": 65.225,
+          "speculative": {
+            "rounds": 231,
+            "drafted": 690,
+            "accepted": 280,
+            "acceptance_rate": 0.4057971014492754,
+            "tokens_per_round": 2.2164502164502164
+          }
+        },
+        {
+          "ttft_s": 0.547,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 8.83,
+          "wall_s": 58.417,
+          "speculative": {
+            "rounds": 198,
+            "drafted": 589,
+            "accepted": 313,
+            "acceptance_rate": 0.5314091680814941,
+            "tokens_per_round": 2.585858585858586
+          }
+        }
+      ]
+    },
+    {
+      "concurrency": 8,
+      "wall_s": 72.414,
+      "errors": 0,
+      "aggregate_tok_s": 56.56,
+      "streams": [
+        {
+          "ttft_s": 0.559,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 7.41,
+          "wall_s": 69.547,
+          "speculative": {
+            "rounds": 234,
+            "drafted": 698,
+            "accepted": 277,
+            "acceptance_rate": 0.3968481375358166,
+            "tokens_per_round": 2.1880341880341883
+          }
+        },
+        {
+          "ttft_s": 1.533,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 7.53,
+          "wall_s": 69.389,
+          "speculative": {
+            "rounds": 233,
+            "drafted": 696,
+            "accepted": 278,
+            "acceptance_rate": 0.3994252873563218,
+            "tokens_per_round": 2.1974248927038627
+          }
+        },
+        {
+          "ttft_s": 1.13,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 7.17,
+          "wall_s": 72.412,
+          "speculative": {
+            "rounds": 263,
+            "drafted": 780,
+            "accepted": 249,
+            "acceptance_rate": 0.3192307692307692,
+            "tokens_per_round": 1.946768060836502
+          }
+        },
+        {
+          "ttft_s": 0.174,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 7.95,
+          "wall_s": 64.414,
+          "speculative": {
+            "rounds": 209,
+            "drafted": 621,
+            "accepted": 302,
+            "acceptance_rate": 0.4863123993558776,
+            "tokens_per_round": 2.449760765550239
+          }
+        },
+        {
+          "ttft_s": 1.331,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 7.43,
+          "wall_s": 70.085,
+          "speculative": {
+            "rounds": 238,
+            "drafted": 711,
+            "accepted": 273,
+            "acceptance_rate": 0.38396624472573837,
+            "tokens_per_round": 2.1512605042016806
+          }
+        },
+        {
+          "ttft_s": 0.93,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 7.94,
+          "wall_s": 65.309,
+          "speculative": {
+            "rounds": 213,
+            "drafted": 635,
+            "accepted": 298,
+            "acceptance_rate": 0.4692913385826772,
+            "tokens_per_round": 2.403755868544601
+          }
+        },
+        {
+          "ttft_s": 0.739,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 7.16,
+          "wall_s": 72.142,
+          "speculative": {
+            "rounds": 258,
+            "drafted": 770,
+            "accepted": 253,
+            "acceptance_rate": 0.32857142857142857,
+            "tokens_per_round": 1.9844961240310077
+          }
+        },
+        {
+          "ttft_s": 0.369,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 8.17,
+          "wall_s": 62.91,
+          "speculative": {
+            "rounds": 203,
+            "drafted": 606,
+            "accepted": 308,
+            "acceptance_rate": 0.5082508250825083,
+            "tokens_per_round": 2.522167487684729
+          }
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "concurrency": 1,
+      "runs": 5,
+      "errors": 0,
+      "median_ttft_s": 0.175,
+      "median_decode_tok_s": 34.17,
+      "median_aggregate_tok_s": 33.79
+    },
+    {
+      "concurrency": 4,
+      "runs": 5,
+      "errors": 0,
+      "median_ttft_s": 0.534,
+      "median_decode_tok_s": 12.25,
+      "median_aggregate_tok_s": 45.51
+    },
+    {
+      "concurrency": 8,
+      "runs": 5,
+      "errors": 0,
+      "median_ttft_s": 0.863,
+      "median_decode_tok_s": 7.79,
+      "median_aggregate_tok_s": 58.76
+    }
+  ]
+}

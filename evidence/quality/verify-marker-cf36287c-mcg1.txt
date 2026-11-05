@@ -1,0 +1,13 @@
+suite cf36287c51a18e9361e009ca00a21eb8c0021ab1 patches ['0001-mcg-marker-rank1.patch']
+[ok] real pack: trellis_checkpoint_plan admits the sidecar declaration - 37152 groups, sidecar sha256 1e5cdf56da1929c2a7d8982085324de05bb92144882792f034239e289316c645
+[ok] real pack: model.language_model.layers.10.mlp.experts.0.down_proj (marker shape [1]) decodes through the marker-value check - weight (4096, 2048) torch.bfloat16
+[ok] synthetic: I32 marker shape [] admitted and decoded
+[ok] synthetic: I32 marker shape [1] admitted and decoded
+[ok] synthetic: [] and [1] markers decode to bitwise-equal weights
+[ok] synthetic: marker shape [2] refused - REFUSED: tensor_storage model.language_model.layers.0.mlp.experts.0.down_proj codebook marker must be one I32, shape [] or [1]
+[ok] synthetic: marker dtype I64 refused - REFUSED: tensor_storage model.language_model.layers.0.mlp.experts.0.down_proj codebook marker must be one I32, shape [] or [1]
+verify_marker: all checks passed
+cf36287c51a18e9361e009ca00a21eb8c0021ab1
+2b1367991089ddb440abb29eb69e1074f91f78805fbd5b478da01df80c51a49c  0001-mcg-marker-rank1.patch
+37be370361a1056283b45d4a28760114e18d7fa8c0ddcc545e4864d2de15976e  engines/tools/layer_outer.py
+11d5115710a644258a992273bd9254a5f8d1eb50307d7ff49c1c349961ce5d70  bin/fidelity/hfmeta.py

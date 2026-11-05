@@ -1,0 +1,1 @@
+knob d8h8-p8: env [-e TF_GLM_DENSE_BITS=8 -e TF_GLM_HEAD_BITS=8] args [--context 524288 --parallel 8 --vision]

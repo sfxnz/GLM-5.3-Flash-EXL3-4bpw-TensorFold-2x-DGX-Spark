@@ -1,0 +1,24 @@
+# determinism and crash recovery on the partial pack, 2026-11-04T15:34:34Z, spark1
+rerun in place: all 18 files identical
+fresh dir pack2: all files identical to pack
+killed -9 after 2.5 s: 0 shards renamed into place, leftovers: 1 .tmp, config.json present: no, index present: no
+rerun after kill: all files identical to pack, 0 .tmp left
+pack sha256 (first run):
+2614a3c896d53e265f564c23701173c0049f985dacfbae79fc4bcd9f5ba083f4  chat_template.jinja
+a04c5e2cd8296a571d8f1e596b97fdc157dbd90fb38e863a8c12cc063b1987c6  config.json
+230c30609ecbbb9e6583bedde8e7bdda0c6eb8fe5fad0eaeb3d1b293d751cb4f  generation_config.json
+30b85b6b9659f2e78aa259f8faf5d920a68dee7c9ced3fa6dba1f19f2bc4fca1  LICENSE
+76ad0d8d53999e267a2418d03a3beb59987572366cc8c281e45eb75a23d19d9e  model-00001-of-00120.safetensors
+fe7fe7701779e61b6d3a2925d5d37d631cd9d3d5f325bec26ef43847f6ffe364  model-00029-of-00120.safetensors
+b58de0884fcc40c83eda88249192b9f84ac5484d9a17848e70020c8dbb16e3bb  model-00057-of-00120.safetensors
+66f1e009a47466e839cbe84405d446899aed95ce4a22acb1218ffe0fe97fa705  model-00058-of-00120.safetensors
+c2009cab14718086cc4ac67179137368eff2ec3b2199cd909e70d30dfbd3b6f0  model-00059-of-00120.safetensors
+3c0eed70076c0f7063b86b774e1fa17be54782aacadc330bea132af66ac3a1a3  model-00087-of-00120.safetensors
+8a1f0e77c0d151170db6e244696441fea608771d6e214d1e935397d7bdb5478b  model-00088-of-00120.safetensors
+3040c4e45256a03289c110deb4e0aebdf92f338110808352edfa4246fcf66b9d  model-00089-of-00120.safetensors
+45b4a1857d041f4356b5c640a5ac128be8e2ad0ab612f75de0108b788c47ee93  model-00090-of-00120.safetensors
+e0fb76960d67988615d4f5ce92cafcae5b256ee38ee2d92ecd3ed67ffecef9c4  model-00120-of-00120.safetensors
+a9d8cbcc681dbffec51b515a44e28bd3a58c390b2d00a68e13d50b6b50dfd40c  model.safetensors.index.json
+aae38374c94b08cc9b0547c6e64f05b951bd9735cea571c6988f5ed552bed3ed  processor_config.json
+98b1271574f41abf89427ae2dda030d94dc9478f0edc5a8bd240db213c6fd5fc  tokenizer_config.json
+19e773648cb4e65de8660ea6365e10acca112d42a854923df93db4a6f333a82d  tokenizer.json

@@ -1,0 +1,32 @@
+{
+ "reference": "/tmp/claude-1000/-home-sfxnz-projects-ai-lab-recipes-GLM-5-3-Flash-EXL3-4bpw-TensorFold-2x-DGX-SPARK/41a586ca-86f5-492d-8b27-8924d8417e05/scratchpad/dl-kld/root",
+ "candidate": "/tmp/claude-1000/-home-sfxnz-projects-ai-lab-recipes-GLM-5-3-Flash-EXL3-4bpw-TensorFold-2x-DGX-SPARK/41a586ca-86f5-492d-8b27-8924d8417e05/scratchpad/dl-kld/tr3",
+ "windows": [
+  {
+   "window": 0,
+   "positions": 2047,
+   "kld_full_fp64": 0.03363447650564342,
+   "kld_full_cand_logits_bf16": 0.03390896907763692,
+   "top1_agreement": 0.9330727894479727,
+   "delta_nll_given_token": 0.010944786964024799,
+   "kld_coarse_topk_lower_bound": {
+    "1": 0.010789322461163858,
+    "5": 0.0195364055044536,
+    "20": 0.02629428196584079
+   },
+   "coarse_over_full": {
+    "1": 0.32078163783383257,
+    "5": 0.5808446431796151,
+    "20": 0.781765756378844
+   },
+   "per_position_corr_coarse_vs_full": {
+    "1": 0.9161498948167295,
+    "5": 0.9326212532928814,
+    "20": 0.9565546682621209
+   },
+   "seconds": 799.1
+  }
+ ],
+ "token_mean_kld_full_fp64": 0.03363447650564342,
+ "estimator": "logits = hidden_fp32 @ head_fp32.T (numpy), fp64 log_softmax, full vocab, mean over positions"
+}

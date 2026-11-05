@@ -1,0 +1,16 @@
+# python3 -I quant/assemble.py assemble /home/sfxnz/projects/data/glm53-exl3/assemble-partial/extract /home/sfxnz/projects/data/glm53-exl3/assemble-partial/qtensors /home/sfxnz/projects/data/glm53-exl3/assemble-partial/pack --layers 0,1,2,3,4
+# 2026-11-04T15:33:27Z on spark1; qtensors from spark2 probe-a (layers 3, 4)
+qtensors layer 3: 288 experts x 3 x 4 parts ok
+qtensors layer 4: 288 experts x 3 x 4 parts ok
+model-00001-of-00120.safetensors: 61 tensors, 3697263496 bytes
+model-00029-of-00120.safetensors: 53 tensors, 883177504 bytes
+model-00057-of-00120.safetensors: 1240 tensors, 1494622588 bytes
+model-00058-of-00120.safetensors: 1280 tensors, 1346271504 bytes
+model-00059-of-00120.safetensors: 975 tensors, 1301197900 bytes
+model-00087-of-00120.safetensors: 775 tensors, 1090843244 bytes
+model-00088-of-00120.safetensors: 1280 tensors, 1346271496 bytes
+model-00089-of-00120.safetensors: 1280 tensors, 1346270752 bytes
+model-00090-of-00120.safetensors: 176 tensors, 485429060 bytes
+model-00120-of-00120.safetensors: 369 tensors, 1455485480 bytes
+assemble: 10 shards, 1728 expert projections written, 969 left out (partial), 14445890840 tensor bytes, 7 s
+wall 6.70 s, maxrss 169376 KB

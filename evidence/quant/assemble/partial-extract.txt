@@ -1,0 +1,23 @@
+# spark2, 2026-11-04T15:32Z. assemble.py piped over ssh (spark2's python3 3.12 has no numpy; the script is stdlib only)
+# ssh spark2 'nice -n 19 ionice -c3 python3 -I - extract $SRC ~/projects/data/glm53-exl3/assemble-partial/extract --shards 1,29,57,58,59,87,88,89,90,120' < quant/assemble.py
+# SRC = ~/.cache/huggingface/hub/models--zai-org--GLM-5.3-Flash-BF16/snapshots/f9fed3bbc82291073373d67452e9f25317ef7577
+# shards: 1 (lm_head, embed, dense L0-L1), 29 (dense L2), 57-59 (L3 experts), 87-90 (L4 experts), 120 (norm, vision tower)
+model-00001-of-00120.safetensors: 61 non-expert of 160 tensors, 3697263496 bytes
+model-00029-of-00120.safetensors: 53 non-expert of 320 tensors, 883177504 bytes
+model-00057-of-00120.safetensors: 12 non-expert of 319 tensors, 203040344 bytes
+model-00058-of-00120.safetensors: 0 non-expert of 320 tensors, 16 bytes
+model-00059-of-00120.safetensors: 27 non-expert of 328 tensors, 304113864 bytes
+model-00087-of-00120.safetensors: 27 non-expert of 328 tensors, 304113880 bytes
+model-00088-of-00120.safetensors: 0 non-expert of 320 tensors, 16 bytes
+model-00089-of-00120.safetensors: 0 non-expert of 320 tensors, 16 bytes
+model-00090-of-00120.safetensors: 28 non-expert of 328 tensors, 329766104 bytes
+model-00120-of-00120.safetensors: 369 non-expert of 531 tensors, 1455485480 bytes
+extract: 10 shards, 7176960720 bytes, 22 s
+du -sb extract: 7201626708 (shards + index + manifest + non-weight files); wall 0:22.5
+spark2 free before / after: 164488945664 B / 147G (probe-b encode writing concurrently)
+
+# spark1 pull over the 200G link (spark2 = 10.100.8.2)
+# rsync -a 10.100.8.2:projects/data/glm53-exl3/assemble-partial/extract/ <spark1>/extract/
+7,201,626,708 bytes in 10.3 s (686 MB/s, one ssh stream)
+# rsync -a 10.100.8.2:.../probe-a/work/qtensors/model.language_model.layers.{3,4}.safetensors <spark1>/qtensors/
+7,906,936,873 bytes in 20.2 s (386 MB/s, one ssh stream)

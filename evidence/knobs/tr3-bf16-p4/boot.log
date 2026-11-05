@@ -1,0 +1,9 @@
+[tensorfold] warning: non-loopback server has no API key; requests are open
+[tensorfold] warning: --vision: the chat template writes no image placeholder for an image part, so image requests will fail; serve with --chat-template naming a template that has an image path
+[tensorfold] CUDA sm_121 device 0 (NVIDIA GB10, memory shared with the host): model 86.29 GiB; 4 streams at once, the engine's own and 3 more taking 1028 pages of 512 rows (6.40 GiB) as they need them (enough for one at a 524288-token window), 340 MiB fixed each, of 12.9 GiB left after a 12.2 GiB reserve; prompts in passes of up to 2048 rows, a 5.5 GiB prompt cache; own glue kernels
+[tensorfold] profile: stable; registered overrides: none
+[tensorfold] serving glm-5.3-flash at http://0.0.0.0:8000/v1 (sampling: temperature 1.0, top_p 0.95; drafts: MTP + copies; context: 524288; loaded in 104.0s)
+[tensorfold] 127.0.0.1 "GET /v1/models HTTP/1.1" 200 -
+[tensorfold] 127.0.0.1 "GET /metrics HTTP/1.1" 200 -
+[tensorfold] 127.0.0.1 "GET /health HTTP/1.1" 200 -
+[tensorfold] 127.0.0.1 "GET /health HTTP/1.1" 200 -

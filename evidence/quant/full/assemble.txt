@@ -1,0 +1,20 @@
+model-00102-of-00120.safetensors: 1280 tensors, 1346272784 bytes
+model-00103-of-00120.safetensors: 1209 tensors, 1640623392 bytes
+model-00104-of-00120.safetensors: 1280 tensors, 1346272760 bytes
+model-00105-of-00120.safetensors: 1280 tensors, 1346272736 bytes
+model-00106-of-00120.safetensors: 1232 tensors, 1570462220 bytes
+model-00107-of-00120.safetensors: 1280 tensors, 1346271504 bytes
+model-00108-of-00120.safetensors: 1280 tensors, 1346271168 bytes
+model-00109-of-00120.safetensors: 1228 tensors, 1591899032 bytes
+model-00110-of-00120.safetensors: 1280 tensors, 1346271504 bytes
+model-00111-of-00120.safetensors: 1280 tensors, 1346270872 bytes
+model-00112-of-00120.safetensors: 1228 tensors, 1591899336 bytes
+model-00113-of-00120.safetensors: 1280 tensors, 1346271496 bytes
+model-00114-of-00120.safetensors: 1275 tensors, 1397078692 bytes
+model-00115-of-00120.safetensors: 1236 tensors, 1519647616 bytes
+model-00116-of-00120.safetensors: 1280 tensors, 1346271512 bytes
+model-00117-of-00120.safetensors: 1228 tensors, 1591898688 bytes
+model-00118-of-00120.safetensors: 1280 tensors, 1346271496 bytes
+model-00119-of-00120.safetensors: 1280 tensors, 1346271232 bytes
+model-00120-of-00120.safetensors: 1017 tensors, 2137037792 bytes
+assemble: 120 shards, 37152 expert projections written, 0 left out (partial), 175622979576 tensor bytes, 362 s

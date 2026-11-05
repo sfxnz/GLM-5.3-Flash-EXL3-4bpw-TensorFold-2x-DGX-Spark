@@ -1,0 +1,244 @@
+{
+  "health": {
+    "ok": true,
+    "detail": {
+      "status": "ok",
+      "model": "glm-5.3-flash",
+      "model_ids": [
+        "glm-5.3-flash"
+      ],
+      "max_batch_size": 8,
+      "warming": false,
+      "memory": {
+        "active": 106833493268,
+        "cache": 0,
+        "peak": 106833493268
+      },
+      "live": {
+        "connections": 0,
+        "waiting": 0,
+        "decode_tokens_per_second": 0.0,
+        "prefill_tokens_per_second": 0.0
+      },
+      "version": "1.2.2",
+      "backend": "cuda",
+      "device": "NVIDIA GB10"
+    }
+  },
+  "models": {
+    "ok": true,
+    "detail": {
+      "want": {
+        "id": "glm-5.3-flash",
+        "context_length": 1048576
+      },
+      "got": {
+        "object": "list",
+        "data": [
+          {
+            "id": "glm-5.3-flash",
+            "object": "model",
+            "created": 1793869608,
+            "owned_by": "tensorfold",
+            "context_length": 1048576,
+            "max_model_len": 1048576,
+            "reasoning": {
+              "default_enabled": true,
+              "supported_efforts": [
+                "max",
+                "high",
+                "low"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "thinking_on": {
+    "ok": true,
+    "detail": {
+      "status": 200,
+      "reasoning_chars": 73,
+      "content": "391",
+      "raw": {
+        "id": "chatcmpl-3be0582c687d20ccd5284e834efc8105",
+        "object": "chat.completion",
+        "created": 1793869608,
+        "model": "glm-5.3-flash",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "391",
+              "reasoning_content": "17 * 23 = 391\n\nLet me verify: 17 * 23 = 17 * 20 + 17 * 3 = 340 + 51 = 391"
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 26,
+          "completion_tokens": 44,
+          "total_tokens": 70,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 41
+          }
+        },
+        "exact_mode": "exact",
+        "tensorfold": {
+          "enable_thinking": true,
+          "reasoning_effort": null,
+          "engine": "lanes",
+          "tokens_per_second": 45.22969168409655,
+          "seconds": 0.950702921,
+          "prefill_seconds": 0.176986773,
+          "prefill_widths": [],
+          "prefill_raised": [],
+          "time_to_first_token": 0.178861706,
+          "sampling": "exact",
+          "drafts": true,
+          "token_sha": "d8e8b80f57ee",
+          "token_sha256": "d8e8b80f57eeaa603878eed112526cee8ae7f8459b8bdfdbbe69af23fd134814",
+          "min_rows": 2
+        },
+        "speculative": {
+          "rounds": 15,
+          "drafted": 34,
+          "accepted": 28,
+          "acceptance_rate": 0.8235294117647058,
+          "tokens_per_round": 2.933333333333333
+        }
+      }
+    }
+  },
+  "thinking_off": {
+    "ok": true,
+    "detail": {
+      "status": 200,
+      "reasoning_content": "",
+      "content": "391",
+      "raw": {
+        "id": "chatcmpl-7135d47de17fdc4774664c60a94711d0",
+        "object": "chat.completion",
+        "created": 1793869609,
+        "model": "glm-5.3-flash",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "391"
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 27,
+          "completion_tokens": 3,
+          "total_tokens": 30,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "exact_mode": "exact",
+        "tensorfold": {
+          "enable_thinking": false,
+          "reasoning_effort": "none",
+          "engine": "lanes",
+          "tokens_per_second": 35.52827741786449,
+          "seconds": 0.056293188,
+          "prefill_seconds": 0.172804887,
+          "prefill_widths": [],
+          "prefill_raised": [],
+          "time_to_first_token": 0.173434457,
+          "sampling": "exact",
+          "drafts": true,
+          "token_sha": "081fad44a944",
+          "token_sha256": "081fad44a94486f19f5f4ca6a76d5460a0d96c4f5dd2b840bcf96450fe3c2c65",
+          "min_rows": 3
+        },
+        "speculative": {
+          "rounds": 1,
+          "drafted": 2,
+          "accepted": 2,
+          "acceptance_rate": 1.0,
+          "tokens_per_round": 3.0
+        }
+      }
+    }
+  },
+  "vision": {
+    "ok": true,
+    "detail": {
+      "status": 200,
+      "content": "{\"left\": {\"color\": \"red\", \"shape\": \"square\"}, \"right\": {\"color\": \"blue\", \"shape\": \"circle\"}}"
+    }
+  },
+  "speculative": {
+    "ok": true,
+    "detail": {
+      "status": 200,
+      "speculative": {
+        "rounds": 125,
+        "drafted": 208,
+        "accepted": 130,
+        "acceptance_rate": 0.625,
+        "tokens_per_round": 2.048
+      }
+    }
+  },
+  "concurrent": {
+    "ok": true,
+    "detail": {
+      "requests": [
+        {
+          "status": 200,
+          "chars": 640,
+          "elapsed_s": 17.12
+        },
+        {
+          "status": 200,
+          "chars": 660,
+          "elapsed_s": 16.73
+        },
+        {
+          "status": 200,
+          "chars": 626,
+          "elapsed_s": 16.54
+        },
+        {
+          "status": 200,
+          "chars": 569,
+          "elapsed_s": 17.62
+        },
+        {
+          "status": 200,
+          "chars": 674,
+          "elapsed_s": 16.54
+        },
+        {
+          "status": 200,
+          "chars": 620,
+          "elapsed_s": 16.88
+        },
+        {
+          "status": 200,
+          "chars": 633,
+          "elapsed_s": 14.04
+        },
+        {
+          "status": 200,
+          "chars": 554,
+          "elapsed_s": 17.83
+        }
+      ]
+    }
+  }
+}

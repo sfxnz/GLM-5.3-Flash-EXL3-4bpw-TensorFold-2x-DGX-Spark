@@ -1,0 +1,4 @@
+# same pack, full-pack mode (no --layers): expected FAIL, the other 41 layers are absent
+FAIL expert: 141696 problem(s)
+FAIL non-expert: 1041 problem(s)
+RESULT FAIL

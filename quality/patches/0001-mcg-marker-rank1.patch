@@ -1,0 +1,28 @@
+--- a/bin/fidelity/hfmeta.py
++++ b/bin/fidelity/hfmeta.py
+@@ -1060,8 +1060,9 @@ def exl3_storage_inventory(qc, keys, groups):
+                 raise ValueError("tensor_storage %s %s shape/dtype disagrees with trellis"
+                                  % (module, field))
+         marker = tensors[objects["marker"]]
+-        if marker["shape"] != [] or marker["dtype"] != "I32":
+-            raise ValueError("tensor_storage %s codebook marker must be scalar I32" % module)
++        if marker["shape"] not in ([], [1]) or marker["dtype"] != "I32":
++            raise ValueError("tensor_storage %s codebook marker must be one I32, shape [] or [1]"
++                             % module)
+         multiplier = entry.get("mcg_multiplier")
+         if multiplier is not None and (objects["codebook"] != "mcg"
+                 or type(multiplier) is not int or multiplier not in (3417055213, -877912083)):
+--- a/engines/tools/layer_outer.py
++++ b/engines/tools/layer_outer.py
+@@ -1264,8 +1264,9 @@ def exl3_storage_inventory(qc, keys, groups):
+                 raise ValueError("tensor_storage %s %s shape/dtype disagrees with trellis"
+                                  % (module, field))
+         marker = tensors[objects["marker"]]
+-        if marker["shape"] != [] or marker["dtype"] != "I32":
+-            raise ValueError("tensor_storage %s codebook marker must be scalar I32" % module)
++        if marker["shape"] not in ([], [1]) or marker["dtype"] != "I32":
++            raise ValueError("tensor_storage %s codebook marker must be one I32, shape [] or [1]"
++                             % module)
+         multiplier = entry.get("mcg_multiplier")
+         if multiplier is not None and (objects["codebook"] != "mcg"
+                 or type(multiplier) is not int or multiplier not in (3417055213, -877912083)):

@@ -1,0 +1,1 @@
+{"event": "result", "target": 1000000, "fitted_target": 1000000, "tokens_per_line": 25.247, "prompt_tokens": 1045624, "needle_depth": 0.37, "answer": "7319-ALPHA-42", "found": true, "wall_s": 1219.9, "prefill_tok_s": 857.2}

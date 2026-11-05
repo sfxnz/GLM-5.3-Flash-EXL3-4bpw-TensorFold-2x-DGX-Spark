@@ -1,0 +1,48 @@
+tokenizer /home/sfxnz/.cache/huggingface/hub/models--brandonmusic--GLM-5.3-Flash-tr3-4bpw/snapshots/a5fee929cf4888b1824323e33e8a19b60129e025/tokenizer.json sha256 19e773648cb4e65de8660ea6365e10acca112d42a854923df93db4a6f333a82d
+  0 prose           3434 tokens  https://www.gutenberg.org/cache/epub/1404/pg1404.txt
+  1 prose           3292 tokens  https://www.gutenberg.org/cache/epub/1404/pg1404.txt
+  2 prose           3296 tokens  https://www.gutenberg.org/cache/epub/2009/pg2009.txt
+  3 prose           3369 tokens  https://www.gutenberg.org/cache/epub/2009/pg2009.txt
+  4 prose           3377 tokens  https://www.gutenberg.org/cache/epub/3300/pg3300.txt
+  5 prose           3247 tokens  https://www.gutenberg.org/cache/epub/3300/pg3300.txt
+  6 prose           3838 tokens  https://www.gutenberg.org/cache/epub/408/pg408.txt
+  7 prose           3502 tokens  https://www.gutenberg.org/cache/epub/408/pg408.txt
+  8 prose           3792 tokens  https://www.gutenberg.org/cache/epub/205/pg205.txt
+  9 prose           3827 tokens  https://www.gutenberg.org/cache/epub/205/pg205.txt
+ 10 prose           3961 tokens  https://www.gutenberg.org/cache/epub/345/pg345.txt
+ 11 prose           3886 tokens  https://www.gutenberg.org/cache/epub/345/pg345.txt
+ 12 multilingual    3973 tokens  https://www.gutenberg.org/cache/epub/2000/pg2000.txt
+ 13 multilingual    4037 tokens  https://www.gutenberg.org/cache/epub/17489/pg17489.txt
+ 14 multilingual    4282 tokens  https://www.gutenberg.org/cache/epub/45334/pg45334.txt
+ 15 multilingual    4119 tokens  https://www.gutenberg.org/cache/epub/55752/pg55752.txt
+ 16 multilingual    3704 tokens  https://www.gutenberg.org/cache/epub/22367/pg22367.txt
+ 17 multilingual    4930 tokens  https://www.gutenberg.org/cache/epub/11940/pg11940.txt
+ 18 multilingual    4552 tokens  https://www.gutenberg.org/cache/epub/11024/pg11024.txt
+ 19 multilingual    2755 tokens  https://www.gutenberg.org/cache/epub/24264/pg24264.txt
+ 20 multilingual    2964 tokens  https://www.gutenberg.org/cache/epub/23962/pg23962.txt
+ 21 multilingual    3192 tokens  https://www.gutenberg.org/cache/epub/23950/pg23950.txt
+ 22 multilingual    2367 tokens  https://www.gutenberg.org/cache/epub/1982/pg1982.txt
+ 23 code            3398 tokens  https://raw.githubusercontent.com/lodash/lodash/4.17.21/lodash.js
+ 24 code            3872 tokens  https://raw.githubusercontent.com/sqlite/sqlite/version-3.45.0/src/func.c
+ 25 code            4726 tokens  https://raw.githubusercontent.com/sqlite/sqlite/version-3.45.0/src/util.c
+ 26 code            3578 tokens  https://raw.githubusercontent.com/rust-lang/rust/1.77.0/library/core/src/str/pattern.rs
+ 27 code            3662 tokens  https://raw.githubusercontent.com/rust-lang/rust/1.77.0/library/alloc/src/collections/binary_heap/mod.rs
+ 28 code            3603 tokens  https://raw.githubusercontent.com/rust-lang/rust/1.77.0/library/core/src/iter/adapters/zip.rs
+ 29 code            3792 tokens  https://raw.githubusercontent.com/python/cpython/v3.12.3/Lib/statistics.py
+ 30 code            3104 tokens  https://raw.githubusercontent.com/python/cpython/v3.12.3/Lib/fractions.py
+ 31 code            3048 tokens  https://raw.githubusercontent.com/python/cpython/v3.12.3/Lib/functools.py
+ 32 code            3125 tokens  https://raw.githubusercontent.com/python/cpython/v3.12.3/Lib/textwrap.py
+ 33 code            3897 tokens  https://raw.githubusercontent.com/golang/go/go1.22.0/src/bufio/scan.go
+ 34 code            2811 tokens  https://raw.githubusercontent.com/golang/go/go1.22.0/src/sort/sort.go
+ 35 math            3965 tokens  https://raw.githubusercontent.com/openai/grade-school-math/3101c7d5072418e28b9008a6636bde82a006892c/grade_school_math/data/train.jsonl
+ 36 math            4083 tokens  https://raw.githubusercontent.com/openai/grade-school-math/3101c7d5072418e28b9008a6636bde82a006892c/grade_school_math/data/train.jsonl
+ 37 math            4267 tokens  https://raw.githubusercontent.com/openai/grade-school-math/3101c7d5072418e28b9008a6636bde82a006892c/grade_school_math/data/train.jsonl
+ 38 math            4013 tokens  https://raw.githubusercontent.com/openai/grade-school-math/3101c7d5072418e28b9008a6636bde82a006892c/grade_school_math/data/train.jsonl
+ 39 math            4046 tokens  https://raw.githubusercontent.com/openai/grade-school-math/3101c7d5072418e28b9008a6636bde82a006892c/grade_school_math/data/train.jsonl
+ 40 long           32148 tokens  https://www.gutenberg.org/cache/epub/145/pg145.txt
+prose         12 chunks   42821 tokens
+multilingual  11 chunks   40875 tokens
+code          12 chunks   42616 tokens
+math           5 chunks   20374 tokens
+long           1 chunks   32148 tokens
+total         41 chunks  178834 tokens

@@ -1,0 +1,32 @@
+# Independent cross-check, not using assemble.py code or its manifest. A 20-line hasher prints sha256/dtype/shape per tensor.
+# spark2: EXPERTS=skip python3 -I tensor_sha.py <the 10 source shards>   (real BF16 source bytes)
+# spark1: EXPERTS=skip on pack shards; EXPERTS=only on pack shards and on qtensors layers 3,4
+source non-expert rows: 577, pack non-expert rows: 577; cmp: identical
+qtensors expert-part rows: 6912, pack expert-part rows: 6912; cmp: identical
+sha256 of the source listing: cca618c0568639eaf62badc8ef441ea74b030664353b0b1d3ff160ff1586ab23; of the qtensors listing: eb474c08a4e5d31d9762eab1e675546a66c4648c3754196dfe78fad3176cabce
+
+## tensor_sha.py
+# tensor_sha.py FILE... : prints "sha256 dtype shape name" per tensor, sorted by name. With EXPERTS=skip, routed expert .weight is skipped;
+# with EXPERTS=only, only routed expert parts are printed.
+import hashlib, json, os, re, struct, sys
+mode = os.environ.get("EXPERTS", "")
+pat = re.compile(r"model\.language_model\.layers\.\d+\.mlp\.experts\.\d+\.(gate|up|down)_proj\.")
+rows = []
+for p in sys.argv[1:]:
+    with open(p, "rb") as f:
+        n = struct.unpack("<Q", f.read(8))[0]; h = json.loads(f.read(n)); h.pop("__metadata__", None)
+        for k, v in h.items():
+            e = bool(pat.match(k))
+            if (mode == "skip" and e) or (mode == "only" and not e): continue
+            a, b = v["data_offsets"]; f.seek(8 + n + a)
+            rows.append(f"{hashlib.sha256(f.read(b - a)).hexdigest()} {v['dtype']} {v['shape']} {k}".replace(", ", ","))
+print("\n".join(sorted(rows, key=lambda r: r.rsplit(" ", 1)[1])))
+
+## first rows of each listing
+aa21c427970f64edd82669db3a8fb46613084e8bc271a3728784a52eb3f25ab4 BF16 [154880,4096] lm_head.weight
+4f7aecd51589ce7879d0ae48a5a1ed25750e4e94d2abe2d14c9526e5ce5641d6 BF16 [154880,4096] model.language_model.embed_tokens.weight
+a2b04183e857d67954da49658f141f9d7546487ce0da3a86ea10292398c157d8 F32 [24] model.language_model.layers.0.hc_attn_base
+ade4fb124dda0f3537386cdd4a3cdcea3a223d386e506a4be89394bb33ee13fe I32 [] model.language_model.layers.3.mlp.experts.0.down_proj.mcg
+1ff7f31991d77abfeab8c9c8cdd006fdb8e210ddc8b324b121975d3d820e1cf4 F16 [2048] model.language_model.layers.3.mlp.experts.0.down_proj.suh
+069d40cb039594ef417159a3427be009fa5f81ebb7360c83dd32a5770432d617 F16 [4096] model.language_model.layers.3.mlp.experts.0.down_proj.svh
+0321cedd40ccb5d4fcf3629b47ad84985d96d947d38e93c787279d097a1df901 I16 [128,256,64] model.language_model.layers.3.mlp.experts.0.down_proj.trellis

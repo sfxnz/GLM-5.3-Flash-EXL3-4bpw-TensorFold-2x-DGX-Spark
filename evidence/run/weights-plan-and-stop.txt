@@ -1,0 +1,12 @@
+$ MODEL=brandonmusic/GLM-5.3-Flash-tr3-4bpw REVISION=a5fee92... SHARDS=121 SHARD_BYTES=175642157752 VALIDATE_ONLY=1 ./run.sh | grep -A1 "head snapshot"
+note   head snapshot: the index names 120 shards, want 121
+WOULD  download brandonmusic/GLM-5.3-Flash-tr3-4bpw at a5fee929cf4888b1824323e33e8a19b60129e025: hf download brandonmusic/GLM-5.3-Flash-tr3-4bpw --revision a5fee929cf4888b1824323e33e8a19b60129e025 --cache-dir /home/sfxnz/.cache/huggingface/hub --include \*.safetensors --include \*.json --include \*.jinja --include LICENSE
+
+$ ./stop.sh   (nothing of ours runs)
+no tf-glm53-rank0 on spark1
+no tf-glm53-rank1 on spark2
+rc=0
+$ ./stop.sh   (second run)
+no tf-glm53-rank0 on spark1
+no tf-glm53-rank1 on spark2
+rc=0

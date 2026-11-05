@@ -1,0 +1,51 @@
+candidate /home/sfxnz/projects/data/glm53-exl3/full/pack
+source    hf:zai-org/GLM-5.3-Flash-BF16@f9fed3bbc82291073373d67452e9f25317ef7577
+routed experts: layers 3..45 x 288 experts x 3 projections
+mcg markers read: 37152
+non-expert tensors: 1618 in candidate, 1618 in source, dtypes {'BF16': 1327, 'F32': 291}
+candidate tensors total: 150226
+gate/up suh sharing per layer over all 288 experts (TF shx: one input rotation per layer):
+  layer 3: 576 distinct gate/up suh -> shx=false
+  layer 4: 576 distinct gate/up suh -> shx=false
+  layer 5: 576 distinct gate/up suh -> shx=false
+  layer 6: 576 distinct gate/up suh -> shx=false
+  layer 7: 576 distinct gate/up suh -> shx=false
+  layer 8: 576 distinct gate/up suh -> shx=false
+  layer 9: 576 distinct gate/up suh -> shx=false
+  layer 10: 576 distinct gate/up suh -> shx=false
+  layer 11: 576 distinct gate/up suh -> shx=false
+  layer 12: 576 distinct gate/up suh -> shx=false
+  layer 13: 576 distinct gate/up suh -> shx=false
+  layer 14: 576 distinct gate/up suh -> shx=false
+  layer 15: 576 distinct gate/up suh -> shx=false
+  layer 16: 576 distinct gate/up suh -> shx=false
+  layer 17: 576 distinct gate/up suh -> shx=false
+  layer 18: 576 distinct gate/up suh -> shx=false
+  layer 19: 576 distinct gate/up suh -> shx=false
+  layer 20: 576 distinct gate/up suh -> shx=false
+  layer 21: 576 distinct gate/up suh -> shx=false
+  layer 22: 576 distinct gate/up suh -> shx=false
+  layer 23: 576 distinct gate/up suh -> shx=false
+  layer 24: 576 distinct gate/up suh -> shx=false
+  layer 25: 576 distinct gate/up suh -> shx=false
+  layer 26: 576 distinct gate/up suh -> shx=false
+  layer 27: 576 distinct gate/up suh -> shx=false
+  layer 28: 576 distinct gate/up suh -> shx=false
+  layer 29: 576 distinct gate/up suh -> shx=false
+  layer 30: 576 distinct gate/up suh -> shx=false
+  layer 31: 576 distinct gate/up suh -> shx=false
+  layer 32: 576 distinct gate/up suh -> shx=false
+  layer 33: 576 distinct gate/up suh -> shx=false
+  layer 34: 576 distinct gate/up suh -> shx=false
+  layer 35: 576 distinct gate/up suh -> shx=false
+  layer 36: 576 distinct gate/up suh -> shx=false
+  layer 37: 576 distinct gate/up suh -> shx=false
+  layer 38: 576 distinct gate/up suh -> shx=false
+  layer 39: 576 distinct gate/up suh -> shx=false
+  layer 40: 576 distinct gate/up suh -> shx=false
+  layer 41: 576 distinct gate/up suh -> shx=false
+  layer 42: 576 distinct gate/up suh -> shx=false
+  layer 43: 576 distinct gate/up suh -> shx=false
+  layer 44: 576 distinct gate/up suh -> shx=false
+  layer 45: 576 distinct gate/up suh -> shx=false
+RESULT PASS

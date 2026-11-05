@@ -1,0 +1,1 @@
+knob dense8: env [-e TF_GLM_DENSE_BITS=8] args [--context 524288 --parallel 4 --vision]

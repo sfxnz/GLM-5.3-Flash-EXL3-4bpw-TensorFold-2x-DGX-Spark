@@ -1,0 +1,21 @@
+panel binding written
+  panel               panel-artifact-sha256:6bafe3283c54bc9342d0f30aa3199d36032d103feb92c31715be8545362790ff (186b6923582ba59334262178f445440070bd428a862e2e5c9459aaa15b4475fe)
+  tokenizer           zai-org/GLM-5.3-Flash-BF16 @ a6c167b62691b2bac901344b65cb651a70f53e43, 3 files verified
+  file                /home/sfxnz/projects/data/glm53-exl3/fidelity/tr3-gb10/inputs/panel.binding.json
+  sha256              2b491126b26d172bc08e90e93e9fd3a69efc057b1ae857b50a40d608e4fce5a8
+  capture with        --panel-binding /home/sfxnz/projects/data/glm53-exl3/fidelity/tr3-gb10/inputs/panel.binding.json --panel-binding-sha256 2b491126b26d172bc08e90e93e9fd3a69efc057b1ae857b50a40d608e4fce5a8
+attn.o                 native     bf16      45 tensors: model
+attn.other             native     mixed     class mixes formats on the same layers (SCOPE-004 admits one row per class and layer_range): 405 x native:bf16@16 (model
+attn.qkv               native     bf16      146 tensors: model
+embed_tokens           native     bf16      1 tensors: model
+lm_head                native     bf16      1 tensors: lm_head
+mlp.down               native     bf16      3 tensors: model
+mlp.gate               native     bf16      3 tensors: model
+mlp.up                 native     bf16      3 tensors: model
+moe.experts            quantized  exl3-mcg  36288 tensors: model
+moe.router             native     mixed     class mixes formats on the same layers (SCOPE-004 admits one row per class and layer_range): 42 x native:bf16@16 (model
+moe.shared_expert      native     bf16      126 tensors: model
+mtp                    quantized  mixed     class mixes formats on the same layers (SCOPE-004 admits one row per class and layer_range): 24 x native:bf16@16 (model
+norm                   native     bf16      92 tensors: model
+other                  native     mixed     class mixes formats on the same layers (SCOPE-004 admits one row per class and layer_range): 436 x native:bf16@16 (model
+allowlist 3481 names sha256 37b68b125e58910a7e1e32b8cd7323e3c5affa208238d31a773f447bf608217c

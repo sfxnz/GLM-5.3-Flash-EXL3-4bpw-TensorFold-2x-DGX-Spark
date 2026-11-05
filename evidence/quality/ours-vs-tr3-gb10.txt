@@ -1,0 +1,13 @@
+{
+ "a": "ours",
+ "b": "tr3-gb10",
+ "windows": 25,
+ "same_capture_stack": true,
+ "kld_a": 0.029439829197592242,
+ "kld_b": 0.025558450602750565,
+ "token_mean_delta": 0.003881378594841677,
+ "window_mean_delta": 0.0038813785948416768,
+ "window_delta_stdev": 0.008092649679332129,
+ "windows_a_lower": 4,
+ "max_window_delta": 0.027259409959315216
+}

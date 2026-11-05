@@ -1,0 +1,68 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 1.67kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for nvcr.io/nvidia/pytorch:26.07-py3@sha256:2140e699b3beaf7f96a0081fd9c9406bc3832b435cdb60dfa2d261f7d2f34a1c
+#2 DONE 0.0s
+
+#3 [context exllamav3] load .dockerignore
+#3 transferring exllamav3: 2B done
+#3 DONE 0.0s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 2B done
+#4 DONE 0.0s
+
+#5 [stage-0 1/4] FROM nvcr.io/nvidia/pytorch:26.07-py3@sha256:2140e699b3beaf7f96a0081fd9c9406bc3832b435cdb60dfa2d261f7d2f34a1c
+#5 CACHED
+
+#6 [internal] load build context
+#6 transferring context: 39B done
+#6 DONE 0.0s
+
+#7 [context exllamav3] load from client
+#7 transferring exllamav3: 37.66MB 0.1s done
+#7 DONE 0.2s
+
+#8 [stage-0 2/4] RUN --mount=type=bind,from=exllamav3,target=/src     test "$(git -c safe.directory='*' -C /src rev-parse "bd1f519172406a9560bd5c90e61000691bb69a07^{commit}")" = "bd1f519172406a9560bd5c90e61000691bb69a07"  && mkdir /opt/exllamav3  && git -c safe.directory='*' -C /src archive "bd1f519172406a9560bd5c90e61000691bb69a07" | tar -x -C /opt/exllamav3  && python3 -m pip install --no-cache-dir --no-deps --retries 10 marisa-trie==1.4.1  && MAX_JOBS="8" TORCH_CUDA_ARCH_LIST=12.1a python3 -m pip install --no-cache-dir --no-build-isolation --no-deps /opt/exllamav3  && rm -rf /opt/exllamav3/build  && echo "bd1f519172406a9560bd5c90e61000691bb69a07" > /opt/exllamav3/COMMIT  && python3 -c "import importlib.metadata as md, exllamav3, exllamav3_ext; print('exllamav3', md.version('exllamav3'))"
+#8 0.645 Collecting marisa-trie==1.4.1
+#8 2.801   Downloading marisa_trie-1.4.1-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl.metadata (10 kB)
+#8 2.841 Downloading marisa_trie-1.4.1-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl (1.5 MB)
+#8 54.85    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.5/1.5 MB 38.1 kB/s  0:00:52
+#8 54.87 Installing collected packages: marisa-trie
+#8 54.91 Successfully installed marisa-trie-1.4.1
+#8 54.91 WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+#8 55.09 Processing /opt/exllamav3
+#8 55.09   Preparing metadata (pyproject.toml): started
+#8 56.51   Preparing metadata (pyproject.toml): finished with status 'done'
+#8 56.51 Building wheels for collected packages: exllamav3
+#8 56.51   Building wheel for exllamav3 (pyproject.toml): started
+#8 116.6   Building wheel for exllamav3 (pyproject.toml): still running...
+#8 176.9   Building wheel for exllamav3 (pyproject.toml): still running...
+#8 237.2   Building wheel for exllamav3 (pyproject.toml): still running...
+#8 282.4   Building wheel for exllamav3 (pyproject.toml): finished with status 'done'
+#8 282.4   Created wheel for exllamav3: filename=exllamav3-1.6.6-cp312-cp312-linux_aarch64.whl size=53319145 sha256=e5671be39bcd7c9a4f9a92afe75f51f09a7fb0d254329897ab4bcc96c6a64e62
+#8 282.4   Stored in directory: /tmp/pip-ephem-wheel-cache-s1bxjh8x/wheels/66/31/22/52c7f1731161c8b0d5fd515bdafc549cddbaf9d4f6b0057a0f
+#8 282.4 Successfully built exllamav3
+#8 282.5 Installing collected packages: exllamav3
+#8 283.1 WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+#8 283.1 Successfully installed exllamav3-1.6.6
+#8 284.3 W1104 13:15:47.338000 1 torch/utils/cpp_extension.py:178] No CUDA runtime is found, using CUDA_HOME='/usr/local/cuda'
+#8 284.6 exllamav3 1.6.6
+#8 DONE 285.1s
+
+#9 [stage-0 3/4] COPY smoke_quantize.py /opt/glm53-quant/smoke_quantize.py
+#9 DONE 0.1s
+
+#10 [stage-0 4/4] WORKDIR /opt/exllamav3
+#10 DONE 0.0s
+
+#11 exporting to image
+#11 exporting layers
+#11 exporting layers 0.5s done
+#11 writing image sha256:07d5586f2972e846bd7b8438d9d956c0b13957fd599107bcbfa71145ae204c88 done
+#11 naming to docker.io/library/glm53-quant:exl3-1.6.6 done
+#11 DONE 0.5s
+exit=0
