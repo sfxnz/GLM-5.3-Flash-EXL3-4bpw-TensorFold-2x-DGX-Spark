@@ -1,0 +1,17 @@
+Nov 04 15:55:33 spark1 kernel: NVRM: nvCheckOkFailedNoLog: Check failed: Out of memory [NV_ERR_NO_MEMORY] (0x00000051) returned from _memdescAllocInternal(pMemDesc) @ mem_desc.c:1359
+Nov 04 15:56:22 spark1 kernel: NVRM: nvCheckOkFailedNoLog: Check failed: Out of memory [NV_ERR_NO_MEMORY] (0x00000051) returned from _memdescAllocInternal(pMemDesc) @ mem_desc.c:1359
+Nov 04 15:56:25 spark1 kernel: NVRM: nvCheckOkFailedNoLog: Check failed: Out of memory [NV_ERR_NO_MEMORY] (0x00000051) returned from _memdescAllocInternal(pMemDesc) @ mem_desc.c:1359
+Nov 04 15:56:29 spark1 kernel: Mem-Info:
+Nov 04 15:56:29 spark1 kernel: active_anon:17563147 inactive_anon:4907359 isolated_anon:0
+Nov 04 15:56:29 spark1 kernel: Node 0 active_anon:70252588kB inactive_anon:19629436kB active_file:324kB inactive_file:3820kB unevictable:26360kB isolated(anon):0kB isolated(file):0kB mapped:52496kB dirty:0kB writeback:0kB shmem:49852kB shmem_thp:0kB shmem_pmdmapped:0kB anon_thp:22528kB kernel_stack:31248kB shadow_call_stack:7896kB pagetables:296020kB sec_pagetables:87676kB all_unreclaimable? yes Balloon:0kB
+Nov 04 15:56:29 spark1 kernel: Node 0 DMA free:495912kB boost:0kB min:244kB low:940kB high:1636kB reserved_highatomic:0KB free_highatomic:0KB active_anon:22820kB inactive_anon:1076kB active_file:12kB inactive_file:12kB unevictable:0kB writepending:0kB zspages:0kB present:1707908kB managed:699192kB mlocked:0kB bounce:0kB free_pcp:0kB local_pcp:0kB free_cma:0kB
+Nov 04 15:56:29 spark1 kernel: Node 0 Normal free:60304kB boost:16384kB min:61300kB low:188100kB high:314900kB reserved_highatomic:0KB free_highatomic:0KB active_anon:70229992kB inactive_anon:19628136kB active_file:328kB inactive_file:3808kB unevictable:26360kB writepending:0kB zspages:0kB present:132120576kB managed:126899576kB mlocked:22588kB bounce:0kB free_pcp:0kB local_pcp:0kB free_cma:0kB
+Nov 04 15:56:29 spark1 kernel: Node 0 hugepages_total=0 hugepages_free=0 hugepages_surp=0 hugepages_size=1048576kB
+Nov 04 15:56:29 spark1 kernel: Node 0 hugepages_total=0 hugepages_free=0 hugepages_surp=0 hugepages_size=32768kB
+Nov 04 15:56:29 spark1 kernel: Node 0 hugepages_total=0 hugepages_free=0 hugepages_surp=0 hugepages_size=2048kB
+Nov 04 15:56:29 spark1 kernel: Node 0 hugepages_total=0 hugepages_free=0 hugepages_surp=0 hugepages_size=64kB
+Nov 04 15:56:29 spark1 kernel: oom-kill:constraint=CONSTRAINT_NONE,nodemask=(null),cpuset=init.scope,mems_allowed=0,global_oom,task_memcg=/system.slice/docker-38bf226f8101d3237581f33c6c0f6642efcd9cb13033916ed2d6236278521c6a.scope,task=python3,pid=1240808,uid=1000
+Nov 04 15:56:29 spark1 kernel: Out of memory: Killed process 1240808 (python3) total-vm:231139428kB, anon-rss:85467136kB, file-rss:24556kB, shmem-rss:6508kB, UID:1000 pgtables:199888kB oom_score_adj:0
+Nov 04 15:56:29 spark1 kernel: NVRM: nvCheckOkFailedNoLog: Check failed: Out of memory [NV_ERR_NO_MEMORY] (0x00000051) returned from _memdescAllocInternal(pMemDesc) @ mem_desc.c:1359
+Nov 04 15:56:29 spark1 kernel: NVRM: nvCheckOkFailedNoLog: Check failed: Out of memory [NV_ERR_NO_MEMORY] (0x00000051) returned from rmStatus @ system_mem.c:345
+Nov 04 15:56:33 spark1 kernel: oom_reaper: reaped process 1240808 (python3), now anon-rss:0kB, file-rss:0kB, shmem-rss:0kB

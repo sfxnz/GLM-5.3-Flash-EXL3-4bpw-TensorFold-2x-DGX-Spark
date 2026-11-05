@@ -1,0 +1,1 @@
+knob d8h8-p8-1m-r105: env [-e TF_GLM_DENSE_BITS=8 -e TF_GLM_HEAD_BITS=8 -e TENSORFOLD_MEMORY_RESERVE_GIB=10.5] args [--context 1048576 --parallel 8 --vision]

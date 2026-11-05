@@ -1,0 +1,2 @@
+verify: 120 shards, 1618 non-expert tensors sha256-equal to the source, 148608 expert parts byte-equal to qtensors, config bits 4, 460 s
+VERIFY PASS

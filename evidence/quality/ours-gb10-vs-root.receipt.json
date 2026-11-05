@@ -1,0 +1,687 @@
+{
+  "candidate": {
+    "capture_content_digest": "87266523305c4640ca8bd9077385f50f2beab10b49c92e3e8cc0c1d820e03408",
+    "dataset_id": "fidelity--glm53flash.sfxnz.quant.ours",
+    "dataset_sha256": "a56c31d7e4f3cf48fd7b29c2bc64a338f1309634d20311b7731a42b073933f08",
+    "form": "hidden",
+    "head": {
+      "bits": 16,
+      "quantized": false,
+      "raw_tensor_sha256": "aa21c427970f64edd82669db3a8fb46613084e8bc271a3728784a52eb3f25ab4",
+      "source": "native",
+      "tensor_content_sha256": "aa21c427970f64edd82669db3a8fb46613084e8bc271a3728784a52eb3f25ab4"
+    },
+    "label": "ours",
+    "lane": "streaming",
+    "lane_identity_sha256": "b6917d8c65cd965d8f35d7fb2c08de0c21a392948fdd95d5ae017070dc462dd0",
+    "repository": null,
+    "revision": null,
+    "role": "quant",
+    "scope_digest": "attn.o=native:bf16@16|attn.other=native:mixed|attn.qkv=native:bf16@16|embed_tokens=native:bf16@16|lm_head=native:bf16@16|mlp.down=native:bf16@16|mlp.gate=native:bf16@16|mlp.up=native:bf16@16|moe.experts=quantized:exl3-mcg@4|moe.router=native:mixed|moe.shared_expert=native:bf16@16|mtp=quantized:mixed|norm=native:bf16@16|other=native:mixed|head=native|kv=bf16",
+    "stack_fingerprint_sha256": "78003501f9ab24a7fd5375905860b99919e5b8e4d0e7233ecb171df82ceda241",
+    "weights": {
+      "artifact_ref": null,
+      "checkpoint_identity_sha256": "13762c39aad44b597534ef306054fc8d31939588eaba85a8a51113a1c3a926d4",
+      "codec": "exl3-mcg",
+      "config_sha256": "a04c5e2cd8296a571d8f1e596b97fdc157dbd90fb38e863a8c12cc063b1987c6",
+      "declared_bits": 4.0,
+      "declared_head_bits": 16,
+      "index_sha256": null,
+      "model_ref": null,
+      "model_revision": "39a1180b5b4d692d55a7371c75f2e6d00d96e24d",
+      "quantized": true,
+      "repository": "sfxnz/GLM-5.3-Flash-EXL3-4bpw",
+      "revision": "39a1180b5b4d692d55a7371c75f2e6d00d96e24d"
+    }
+  },
+  "comparability": {
+    "bias": {
+      "detail": "the capture stacks differ or their code identity is unproven. The sign and magnitude of the cross-stack effect are unknown; a control measured on another artifact, panel or stack is not a transferable correction. usable_as_floor is false.",
+      "direction": "unknown",
+      "estimated_magnitude": null,
+      "floor_measurement_ref": null,
+      "kind": "cross_stack_capture_replay"
+    },
+    "class": "advisory",
+    "key": "cmp--eda246f76aa005ac",
+    "key_inputs": {
+      "accumulation_dtype": "float64",
+      "direction": "reference_to_candidate",
+      "head_policy": "shared_reference_head",
+      "metric_name": "mean_tokenwise_kld",
+      "note": "provisional; the registry recomputes with its reference record id (registry CMP-001)",
+      "panel_id": "panel-artifact-sha256:6bafe3283c54bc9342d0f30aa3199d36032d103feb92c31715be8545362790ff",
+      "reference_id": "fidelity--glm53flash.malaiwah.root.bf16",
+      "stack_relation": "cross_stack"
+    },
+    "same_lane": true,
+    "usable_as_floor": false
+  },
+  "comparator": {
+    "accumulation_dtype": "float64",
+    "bf16_reduced_precision_reduction": false,
+    "cublas_workspace_config": null,
+    "deterministic_algorithms": true,
+    "device": "cpu",
+    "estimator_backend": "torch:k6_kld_report._token_kld",
+    "head_applied_candidate_tensor_content_sha256": "aa21c427970f64edd82669db3a8fb46613084e8bc271a3728784a52eb3f25ab4",
+    "head_applied_reference_tensor_content_sha256": "aa21c427970f64edd82669db3a8fb46613084e8bc271a3728784a52eb3f25ab4",
+    "head_applied_tensor_content_sha256": "aa21c427970f64edd82669db3a8fb46613084e8bc271a3728784a52eb3f25ab4",
+    "logprob_dtype": "float64",
+    "position_block": 128,
+    "replay_backend": "numpy:cpu:float32",
+    "replay_env": {
+      "blas_configuration": "OpenBLAS 0.3.27  USE64BITINT DYNAMIC_ARCH NO_AFFINITY neoversen1 MAX_THREADS=64",
+      "blas_name": "scipy-openblas",
+      "blas_threads": 8,
+      "blas_threads_source": "ctypes:scipy_openblas_get_num_threads64_",
+      "blas_version": "0.3.27",
+      "cpu_model": "aarch64",
+      "library": "numpy",
+      "numpy_version": "2.1.0",
+      "replay_dtype": "float32"
+    },
+    "replay_peak_device_bytes": null,
+    "short_circuited": false,
+    "source_file_hashes_verified": true,
+    "tensor_content_digests_verified": true,
+    "tf32": false,
+    "tool": {
+      "entrypoint": "bin/fidelity-dataset compare",
+      "note": "the fp64 estimator is k6_kld_report._token_kld, imported not copied, whenever torch is importable; estimator_backend records which path ran."
+    },
+    "two_pass": true,
+    "vocab_chunk": 8192
+  },
+  "comparison_kind": "measurement",
+  "context_depth_buckets": {
+    "0000-0255": 0.09331453540061857,
+    "0256-0511": 0.027332656203894575,
+    "0512-1023": 0.021292086720858694,
+    "1024-1535": 0.01913396892214688,
+    "1536-2046": 0.0169853401712272
+  },
+  "created_utc": "2026-11-05T14:04:19Z",
+  "determinism": {
+    "cold_start_per_run": null,
+    "distinct_evidence_hash_count": 2,
+    "evidence_hashes": [
+      "4b068c7cf4d3495a544ab085d536e2c15c4208a23082aa3b194a63a3a3ca8f5a",
+      "87266523305c4640ca8bd9077385f50f2beab10b49c92e3e8cc0c1d820e03408"
+    ],
+    "evidence_kind": "hidden_state_tensor_sha256",
+    "identical_across_runs": null,
+    "max_run_mean": 0.029439829197592242,
+    "min_run_mean": 0.029439829197592242,
+    "note": "one comparison of two sealed captures. identical_across_runs is null, not true: that claim needs two independently produced captures of the SAME weights (SC-2), which is a different receipt.",
+    "population_stddev_of_run_means": 0.0,
+    "run_count": 1,
+    "run_means": [
+      0.029439829197592242
+    ]
+  },
+  "disclosures": [
+    {
+      "affects_comparability": false,
+      "code": "shared_reference_head",
+      "detail": "HEAD-1a: both captures declare the same lm_head tensor content digest (aa21c427970f); one head applied to both sides is a shared APPLICATION of identical WEIGHTS.",
+      "severity": "info"
+    },
+    {
+      "affects_comparability": true,
+      "code": "cross_stack_capture",
+      "detail": "capture stack equality is not established (lane_identity differs, stack_fingerprint differs, source_files differ or unrecorded). The cross-stack effect has unknown sign and magnitude.",
+      "severity": "caveat"
+    },
+    {
+      "affects_comparability": true,
+      "code": "weights_reconstructed",
+      "detail": "candidate was captured from a WEIGHTS-ONLY RECONSTRUCTION: 36288 trellis payload group(s) were decoded to bf16 by engines/tools/exl3hf_surface.py:decode_payload_hf, this repository's transcription of exllamav3's mul1/mcg codebooks (exllamav3_ext/quant/codebook.cuh, pack.cu), before the transformers forward (method exl3-trellis-decode-to-bf16; K histogram K4 x 36288). trellis unpack + codebook + tile layout bitwise vs exllamav3 1.4.2 exllamav3_ext.reconstruct on 15 real module(s) (engines/tools/layer-outer-evidence/exl3-decoder-parity-vs-exllamav3.json); the fp16 weight after exllamav3's own four-rounding Hadamard path has a sampled max_abs_diff of 0.000244, not a universal bound; full decoded-weight and native-forward equivalence remain unproven. retained samples cover codebooks mcg, mul1 at K=3, 4, 6 only; they are not artifact-wide or whole-model qualification. the served exllamav3 kernel's fp16 activations and on-the-fly dequant are not in this number. The comparison is advisory.",
+      "severity": "caveat"
+    }
+  ],
+  "estimator": {
+    "accumulation_dtype": "float64",
+    "head_policy": "shared_reference_head",
+    "hidden_dtype": "bf16",
+    "logits_dtype": "float32",
+    "softmax_note": "full-vocabulary log-softmax in float64; estimator_backend names the implementation. No truncation, top-k or clamp. A non-finite intermediate is a hard refusal.",
+    "stack_relation": "cross_stack",
+    "two_pass": true,
+    "vocab_chunk": 8192,
+    "zero_handling": null
+  },
+  "format_version": 1,
+  "gates": {
+    "coverage": {
+      "detail": "25 of 25/25 declared records shared",
+      "overridden_by": null,
+      "passed": true
+    },
+    "decode": {
+      "detail": "weights_decode reference none; candidate exl3-trellis-decode-to-bf16",
+      "overridden_by": null,
+      "passed": true
+    },
+    "form": {
+      "detail": "hidden vs hidden",
+      "overridden_by": null,
+      "passed": true
+    },
+    "geometry": {
+      "detail": "vocab_size 154880 equal; hidden_width 4096",
+      "overridden_by": null,
+      "passed": true
+    },
+    "head": {
+      "detail": "HEAD-1a: identical head content digest on both sides",
+      "overridden_by": null,
+      "passed": true
+    },
+    "lane": {
+      "detail": "lane=streaming vs streaming",
+      "overridden_by": null,
+      "passed": true
+    },
+    "lossy": {
+      "detail": "lossy_codec null on both sides",
+      "overridden_by": null,
+      "passed": true
+    },
+    "panel": {
+      "detail": "suite_token_hash_sha256 equal; 25 shared records; per-record token and mask digests equal; scoring_window equal",
+      "overridden_by": null,
+      "passed": true
+    },
+    "seal": {
+      "detail": "both manifests self-seal and checksums.txt verified; every tensor_content_sha256 recomputed",
+      "overridden_by": null,
+      "passed": true
+    },
+    "stack": {
+      "detail": "lane_identity differ / stack_fingerprint differ / source_files differ or unrecorded -> cross_stack",
+      "overridden_by": null,
+      "passed": true
+    }
+  },
+  "high_kld_contexts": [
+    {
+      "allocation_stratum": null,
+      "domain": "axis1_general",
+      "index": 4,
+      "max": 4.694084033127879,
+      "mean": 0.09755479881792016,
+      "scored_rows": 2047,
+      "window_id": "final-0004"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis1_general",
+      "index": 0,
+      "max": 8.981482760931529,
+      "mean": 0.06885632687868418,
+      "scored_rows": 2047,
+      "window_id": "final-0000"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis2_legal",
+      "index": 21,
+      "max": 2.4729358349878257,
+      "mean": 0.06438368752057837,
+      "scored_rows": 2047,
+      "window_id": "final-0021"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis4_reasoning_termination",
+      "index": 19,
+      "max": 5.067155431569473,
+      "mean": 0.0415255565061188,
+      "scored_rows": 2047,
+      "window_id": "final-0019"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis2_legal",
+      "index": 1,
+      "max": 1.9663683432282988,
+      "mean": 0.04133529131383735,
+      "scored_rows": 2047,
+      "window_id": "final-0001"
+    }
+  ],
+  "kl": {
+    "max": 8.981482760931529,
+    "mean": 0.029439829197592242,
+    "median": 0.00185804519651998,
+    "p95": 0.12163943497529332,
+    "p99": 0.4276091475459418,
+    "p99_9": 1.7272211374828024
+  },
+  "kl_macro_stratum_mean": null,
+  "kl_micro_token_mean": 0.029439829197592242,
+  "measurement_scope": {
+    "contexts": 25,
+    "covers_full_panel": true,
+    "position_filter": "all",
+    "positions_per_context": 2047,
+    "scored_positions": 51175,
+    "subset_detail": null
+  },
+  "metric": {
+    "direction": "reference_to_candidate",
+    "direction_label": "KL(reference || candidate)",
+    "higher_is_better": false,
+    "name": "mean_tokenwise_kld",
+    "units": "nats",
+    "value": 0.029439829197592242
+  },
+  "panel": {
+    "context_length": 2048,
+    "contexts": 25,
+    "panel_id": "panel-artifact-sha256:6bafe3283c54bc9342d0f30aa3199d36032d103feb92c31715be8545362790ff",
+    "panel_token_sha256_legacy": "023f9dbbbf62088634857c70253b3cd0bc0619812e1cc1559e8061f746a287f1",
+    "scored_positions": 51175,
+    "scoring_window": {
+      "dropped_positions_total": 0,
+      "min_left_context_tokens": 1,
+      "policy": "every causal prediction position of every window is scored; nothing is dropped",
+      "score_from": 0,
+      "windowed": false
+    },
+    "suite_token_hash_sha256": "186b6923582ba59334262178f445440070bd428a862e2e5c9459aaa15b4475fe",
+    "tokenizer": {
+      "files": [
+        {
+          "bytes": 8617,
+          "name": "chat_template.jinja",
+          "sha256": "41cff9af7b3a86c96751b107a8444f245fbda0bd5320b636a5bb1f7f4ba1a5c3"
+        },
+        {
+          "bytes": 20217442,
+          "name": "tokenizer.json",
+          "sha256": "19e773648cb4e65de8660ea6365e10acca112d42a854923df93db4a6f333a82d"
+        },
+        {
+          "bytes": 761,
+          "name": "tokenizer_config.json",
+          "sha256": "98b1271574f41abf89427ae2dda030d94dc9478f0edc5a8bd240db213c6fd5fc"
+        }
+      ],
+      "files_verified": true,
+      "id": "zai-org/GLM-5.3-Flash-BF16",
+      "identity_sha256": "4de3937ae77b0908990b28ef7b64a6517b5a005bc51205cd071746fd3f60b09d",
+      "maximum_token_id_exclusive": 154856,
+      "receipt": {
+        "declared_receipt_sha256": "d1522ca96b57e1e60e781d217557d5ed4b9669537cddfeefe346e568ccce8656",
+        "receipt_file_bytes": 1778,
+        "receipt_file_sha256": "fd6e407903e7c787f84df361c44d0af945193ade27e953a02dd613ecf9a4c3b2",
+        "receipt_seal_mode": "legacy-field-absent"
+      },
+      "repository": "zai-org/GLM-5.3-Flash-BF16",
+      "revision": "a6c167b62691b2bac901344b65cb651a70f53e43",
+      "vocab_size": 154856
+    },
+    "tokenizer_candidate": {
+      "files": [
+        {
+          "bytes": 8617,
+          "name": "chat_template.jinja",
+          "sha256": "41cff9af7b3a86c96751b107a8444f245fbda0bd5320b636a5bb1f7f4ba1a5c3"
+        },
+        {
+          "bytes": 20217442,
+          "name": "tokenizer.json",
+          "sha256": "19e773648cb4e65de8660ea6365e10acca112d42a854923df93db4a6f333a82d"
+        },
+        {
+          "bytes": 761,
+          "name": "tokenizer_config.json",
+          "sha256": "98b1271574f41abf89427ae2dda030d94dc9478f0edc5a8bd240db213c6fd5fc"
+        }
+      ],
+      "files_verified": true,
+      "id": "zai-org/GLM-5.3-Flash-BF16",
+      "identity_sha256": "4de3937ae77b0908990b28ef7b64a6517b5a005bc51205cd071746fd3f60b09d",
+      "maximum_token_id_exclusive": 154856,
+      "receipt": {
+        "declared_receipt_sha256": "d1522ca96b57e1e60e781d217557d5ed4b9669537cddfeefe346e568ccce8656",
+        "receipt_file_bytes": 1778,
+        "receipt_file_sha256": "fd6e407903e7c787f84df361c44d0af945193ade27e953a02dd613ecf9a4c3b2",
+        "receipt_seal_mode": "legacy-field-absent"
+      },
+      "repository": "zai-org/GLM-5.3-Flash-BF16",
+      "revision": "a6c167b62691b2bac901344b65cb651a70f53e43",
+      "vocab_size": 154856
+    },
+    "tokenizer_identity_equal": true,
+    "tokenizer_reference": {
+      "files": [
+        {
+          "bytes": 8617,
+          "name": "chat_template.jinja",
+          "sha256": "41cff9af7b3a86c96751b107a8444f245fbda0bd5320b636a5bb1f7f4ba1a5c3"
+        },
+        {
+          "bytes": 20217442,
+          "name": "tokenizer.json",
+          "sha256": "19e773648cb4e65de8660ea6365e10acca112d42a854923df93db4a6f333a82d"
+        },
+        {
+          "bytes": 761,
+          "name": "tokenizer_config.json",
+          "sha256": "98b1271574f41abf89427ae2dda030d94dc9478f0edc5a8bd240db213c6fd5fc"
+        }
+      ],
+      "files_verified": true,
+      "id": "zai-org/GLM-5.3-Flash-BF16",
+      "identity_sha256": "4de3937ae77b0908990b28ef7b64a6517b5a005bc51205cd071746fd3f60b09d",
+      "maximum_token_id_exclusive": 154856,
+      "receipt": {
+        "declared_receipt_sha256": "d1522ca96b57e1e60e781d217557d5ed4b9669537cddfeefe346e568ccce8656",
+        "receipt_file_bytes": 1778,
+        "receipt_file_sha256": "fd6e407903e7c787f84df361c44d0af945193ade27e953a02dd613ecf9a4c3b2",
+        "receipt_seal_mode": "legacy-field-absent"
+      },
+      "repository": "zai-org/GLM-5.3-Flash-BF16",
+      "revision": "a6c167b62691b2bac901344b65cb651a70f53e43",
+      "vocab_size": 154856
+    }
+  },
+  "per_context": [
+    {
+      "allocation_stratum": null,
+      "domain": "axis1_general",
+      "index": 0,
+      "max": 8.981482760931529,
+      "mean": 0.06885632687868418,
+      "scored_rows": 2047,
+      "window_id": "final-0000"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis2_legal",
+      "index": 1,
+      "max": 1.9663683432282988,
+      "mean": 0.04133529131383735,
+      "scored_rows": 2047,
+      "window_id": "final-0001"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis3_code_agentic",
+      "index": 2,
+      "max": 1.8448406887005129,
+      "mean": 0.032242089276633294,
+      "scored_rows": 2047,
+      "window_id": "final-0002"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis4_reasoning_termination",
+      "index": 3,
+      "max": 2.8005810027985305,
+      "mean": 0.0190163036892441,
+      "scored_rows": 2047,
+      "window_id": "final-0003"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis1_general",
+      "index": 4,
+      "max": 4.694084033127879,
+      "mean": 0.09755479881792016,
+      "scored_rows": 2047,
+      "window_id": "final-0004"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis2_legal",
+      "index": 5,
+      "max": 1.339567265368045,
+      "mean": 0.034647654738728904,
+      "scored_rows": 2047,
+      "window_id": "final-0005"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis3_code_agentic",
+      "index": 6,
+      "max": 4.867240736553183,
+      "mean": 0.028305855739768515,
+      "scored_rows": 2047,
+      "window_id": "final-0006"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis4_reasoning_termination",
+      "index": 7,
+      "max": 2.029826012790686,
+      "mean": 0.01263452282551342,
+      "scored_rows": 2047,
+      "window_id": "final-0007"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis1_general",
+      "index": 8,
+      "max": 1.216986136235719,
+      "mean": 0.009134906009567005,
+      "scored_rows": 2047,
+      "window_id": "final-0008"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis2_legal",
+      "index": 9,
+      "max": 1.12025995649942,
+      "mean": 0.018882010940223987,
+      "scored_rows": 2047,
+      "window_id": "final-0009"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis3_code_agentic",
+      "index": 10,
+      "max": 2.115377017342517,
+      "mean": 0.022804869738065378,
+      "scored_rows": 2047,
+      "window_id": "final-0010"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis4_reasoning_termination",
+      "index": 11,
+      "max": 1.0603495606115236,
+      "mean": 0.02225774502796399,
+      "scored_rows": 2047,
+      "window_id": "final-0011"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis1_general",
+      "index": 12,
+      "max": 2.2005692199529925,
+      "mean": 0.017997108407607886,
+      "scored_rows": 2047,
+      "window_id": "final-0012"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis2_legal",
+      "index": 13,
+      "max": 1.9364231397350848,
+      "mean": 0.027021967926002366,
+      "scored_rows": 2047,
+      "window_id": "final-0013"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis3_code_agentic",
+      "index": 14,
+      "max": 0.44445238046205116,
+      "mean": 0.007111415493421463,
+      "scored_rows": 2047,
+      "window_id": "final-0014"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis4_reasoning_termination",
+      "index": 15,
+      "max": 2.213237621008952,
+      "mean": 0.03169911005389482,
+      "scored_rows": 2047,
+      "window_id": "final-0015"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis1_general",
+      "index": 16,
+      "max": 0.5895271221377227,
+      "mean": 0.007778984972196053,
+      "scored_rows": 2047,
+      "window_id": "final-0016"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis2_legal",
+      "index": 17,
+      "max": 1.0547635966107594,
+      "mean": 0.027671444122134157,
+      "scored_rows": 2047,
+      "window_id": "final-0017"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis3_code_agentic",
+      "index": 18,
+      "max": 3.575585508149771,
+      "mean": 0.022462443101560405,
+      "scored_rows": 2047,
+      "window_id": "final-0018"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis4_reasoning_termination",
+      "index": 19,
+      "max": 5.067155431569473,
+      "mean": 0.0415255565061188,
+      "scored_rows": 2047,
+      "window_id": "final-0019"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis1_general",
+      "index": 20,
+      "max": 2.1507618797243433,
+      "mean": 0.028429215960537945,
+      "scored_rows": 2047,
+      "window_id": "final-0020"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis2_legal",
+      "index": 21,
+      "max": 2.4729358349878257,
+      "mean": 0.06438368752057837,
+      "scored_rows": 2047,
+      "window_id": "final-0021"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis3_code_agentic",
+      "index": 22,
+      "max": 1.0462500416655087,
+      "mean": 0.021728650702710114,
+      "scored_rows": 2047,
+      "window_id": "final-0022"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis4_reasoning_termination",
+      "index": 23,
+      "max": 4.8127456842562,
+      "mean": 0.024766265835388213,
+      "scored_rows": 2047,
+      "window_id": "final-0023"
+    },
+    {
+      "allocation_stratum": null,
+      "domain": "axis1_general",
+      "index": 24,
+      "max": 0.46299861597485015,
+      "mean": 0.0057475043415051935,
+      "scored_rows": 2047,
+      "window_id": "final-0024"
+    }
+  ],
+  "per_domain": {
+    "axis1_general": 0.033642692198288346,
+    "axis2_legal": 0.035657009426917526,
+    "axis3_code_agentic": 0.022442554008693192,
+    "axis4_reasoning_termination": 0.025316583989687225
+  },
+  "per_stratum": null,
+  "receipt_sha256": "38e28d847b5dee023abacfbc8e527d704fee08c3fcd9363a65268611a5322919",
+  "reference": {
+    "capture_content_digest": "4b068c7cf4d3495a544ab085d536e2c15c4208a23082aa3b194a63a3a3ca8f5a",
+    "dataset_id": "fidelity--glm53flash.malaiwah.root.bf16",
+    "dataset_sha256": "0bff144766d57086ead7f1f87b9e43c5263fffc7534bf1d7c51d34947fd0283b",
+    "form": "hidden",
+    "head": {
+      "bits": 16,
+      "quantized": false,
+      "raw_tensor_sha256": "aa21c427970f64edd82669db3a8fb46613084e8bc271a3728784a52eb3f25ab4",
+      "source": "native",
+      "tensor_content_sha256": "aa21c427970f64edd82669db3a8fb46613084e8bc271a3728784a52eb3f25ab4"
+    },
+    "label": "root-v1@bdd25fe0",
+    "lane": "streaming",
+    "lane_identity_sha256": "025ae83c1cb0e2c518baa8bd0c46965f0c17b6aaca5b1b875ca5fcea71f565d5",
+    "repository": "malaiwah/glm53-flash-fidelity-root-v1",
+    "revision": null,
+    "role": "root",
+    "scope_digest": "attn.o=native:bf16@16|attn.qkv=native:bf16@16|embed_tokens=native:bf16@16|lm_head=native:bf16@16|mlp.down=native:bf16@16|mlp.gate=native:bf16@16|mlp.up=native:bf16@16|moe.experts=native:bf16@16|norm=native:bf16@16|head=native|kv=bf16",
+    "stack_fingerprint_sha256": "e7ddf6b280474c1709836e227b55dda1247b32148313bc87fd88a2ada704f0e0",
+    "weights": {
+      "artifact_ref": null,
+      "checkpoint_identity_sha256": "6190a57f550355eeb8ca326c9cfcb614fdf998c764d31e91ac172431f7a06503",
+      "codec": null,
+      "config_sha256": "33e63ec7fe607658be712bd6dd3c16c6549960d8e7f0483d34b939881b55f943",
+      "declared_bits": null,
+      "declared_head_bits": 16,
+      "index_sha256": null,
+      "model_ref": null,
+      "model_revision": "a6c167b62691b2bac901344b65cb651a70f53e43",
+      "quantized": false,
+      "repository": "zai-org/GLM-5.3-Flash-BF16",
+      "revision": "a6c167b62691b2bac901344b65cb651a70f53e43"
+    }
+  },
+  "schema": "malaiwah.fidelity-comparison-receipt.v1",
+  "self_compare": null,
+  "submission": {
+    "emitted": false,
+    "path": null,
+    "receipt_sha256": null,
+    "refusal": null,
+    "submission_schema": null
+  },
+  "tokenwise": {
+    "bytes": 409528,
+    "path": "tokenwise-kld.npy",
+    "sha256": "ecf3b1f9780ef92db91c26e2fba7ecea6ba7a84aa6123d39bec69ca0cf74922b"
+  },
+  "top1_agreement": 0.9488226673180263,
+  "top1_discordant_contexts": [],
+  "uncertainty": {
+    "ci95_high": null,
+    "ci95_low": null,
+    "cluster_unit": null,
+    "clusters": null,
+    "method": "none",
+    "samples": null,
+    "seed": null
+  }
+}

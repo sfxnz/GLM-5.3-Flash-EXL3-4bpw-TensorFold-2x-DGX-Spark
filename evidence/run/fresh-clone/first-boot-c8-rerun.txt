@@ -1,0 +1,2 @@
+first boot after download, c=8 rerun (3 runs): aggregate 41.29 tok/s, decode 5.46, ttft 0.91
+spark2 kcompactd %CPU every 10 s during that rerun: 0.0 0.0 100.0 0.0 0.0 0.0 100.0 100.0 0.0 0.0 0.0 100.0 

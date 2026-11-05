@@ -1,0 +1,15 @@
+good pack: PASS
+per-expert suh: PASS, reported shx=false
+bits_float: FAIL as expected ->  bits 4.0 (float), want the JSON integer 4
+bits_text_config_only: FAIL as expected ->  no top-level quantization_config (TF config.zig reads exl3 only from the top level)
+codebook_mul1: FAIL as expected ->  codebook "mul1", want "mcg"
+trellis_shape: FAIL as expected ->  model.language_model.layers.2.mlp.experts.1.down_proj.trellis is I16 [2, 8, 32], want I16 [2, 8, 64]
+suh_f32: FAIL as expected ->  model.language_model.layers.2.mlp.experts.1.down_proj.suh is F32 [32], want F16 [32]
+marker_value: FAIL as expected ->  model.language_model.layers.2.mlp.experts.1.down_proj.mcg = 2dd1dc83, want 0xcbac1fed little-endian
+mtp_expert_missing: FAIL as expected ->  model.language_model.layers.2.mlp.experts.1.down_proj.svh missing
+weight_left: FAIL as expected ->  model.language_model.layers.2.mlp.experts.1.down_proj.weight left in the pack
+nonexpert_f16: FAIL as expected ->  lm_head.weight is F16 [8, 128], source BF16 [8, 128]
+nonexpert_f32_narrowed: FAIL as expected ->  model.language_model.layers.0.self_attn.A_log is BF16 [4], source F32 [4]
+nonexpert_missing: FAIL as expected ->  model.language_model.embed_tokens.weight missing
+nonexpert_extra: FAIL as expected ->  model.language_model.layers.0.self_attn.qkv_proj.weight not in the source
+ALL CHECKER TESTS PASS

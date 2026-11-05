@@ -1,0 +1,60 @@
+# Broken copy of the TR3 header cache (make_broken.py): config.json quantization_config.bits 4 -> 4.0, and in shard 10's header
+# model.language_model.layers.13.mlp.experts.100.gate_proj.trellis dtype I16 -> F16 (same byte size, offsets unchanged).
+# python3 -I quant/check_layout.py hf:brandonmusic/GLM-5.3-Flash-tr3-4bpw@a5fee929 hf:zai-org/GLM-5.3-Flash-BF16@f9fed3bbc82291073373d67452e9f25317ef7577 --cache <scratch>/hdrcache-broken --suh-sample 2
+# 2026-11-04T13:49:27Z
+candidate hf:brandonmusic/GLM-5.3-Flash-tr3-4bpw@a5fee929
+source    hf:zai-org/GLM-5.3-Flash-BF16@f9fed3bbc82291073373d67452e9f25317ef7577
+routed experts: layers 3..45 x 288 experts x 3 projections
+mcg markers read: 37152
+non-expert tensors: 1618 in candidate, 1618 in source, dtypes {'F32': 291, 'BF16': 1327}
+candidate tensors total: 150226
+gate/up suh sharing per layer over 2 sampled experts [0, 287] (TF shx: one input rotation per layer):
+  layer 3: 1 distinct gate/up suh -> shx=true
+  layer 4: 1 distinct gate/up suh -> shx=true
+  layer 5: 1 distinct gate/up suh -> shx=true
+  layer 6: 1 distinct gate/up suh -> shx=true
+  layer 7: 1 distinct gate/up suh -> shx=true
+  layer 8: 1 distinct gate/up suh -> shx=true
+  layer 9: 1 distinct gate/up suh -> shx=true
+  layer 10: 1 distinct gate/up suh -> shx=true
+  layer 11: 1 distinct gate/up suh -> shx=true
+  layer 12: 1 distinct gate/up suh -> shx=true
+  layer 13: 1 distinct gate/up suh -> shx=true
+  layer 14: 1 distinct gate/up suh -> shx=true
+  layer 15: 1 distinct gate/up suh -> shx=true
+  layer 16: 1 distinct gate/up suh -> shx=true
+  layer 17: 1 distinct gate/up suh -> shx=true
+  layer 18: 1 distinct gate/up suh -> shx=true
+  layer 19: 1 distinct gate/up suh -> shx=true
+  layer 20: 1 distinct gate/up suh -> shx=true
+  layer 21: 1 distinct gate/up suh -> shx=true
+  layer 22: 1 distinct gate/up suh -> shx=true
+  layer 23: 1 distinct gate/up suh -> shx=true
+  layer 24: 1 distinct gate/up suh -> shx=true
+  layer 25: 1 distinct gate/up suh -> shx=true
+  layer 26: 1 distinct gate/up suh -> shx=true
+  layer 27: 1 distinct gate/up suh -> shx=true
+  layer 28: 1 distinct gate/up suh -> shx=true
+  layer 29: 1 distinct gate/up suh -> shx=true
+  layer 30: 1 distinct gate/up suh -> shx=true
+  layer 31: 1 distinct gate/up suh -> shx=true
+  layer 32: 1 distinct gate/up suh -> shx=true
+  layer 33: 1 distinct gate/up suh -> shx=true
+  layer 34: 1 distinct gate/up suh -> shx=true
+  layer 35: 1 distinct gate/up suh -> shx=true
+  layer 36: 1 distinct gate/up suh -> shx=true
+  layer 37: 1 distinct gate/up suh -> shx=true
+  layer 38: 1 distinct gate/up suh -> shx=true
+  layer 39: 1 distinct gate/up suh -> shx=true
+  layer 40: 1 distinct gate/up suh -> shx=true
+  layer 41: 1 distinct gate/up suh -> shx=true
+  layer 42: 1 distinct gate/up suh -> shx=true
+  layer 43: 1 distinct gate/up suh -> shx=true
+  layer 44: 1 distinct gate/up suh -> shx=true
+  layer 45: 1 distinct gate/up suh -> shx=true
+FAIL config: 1 problem(s)
+  bits 4.0 (float), want the JSON integer 4
+FAIL expert: 1 problem(s)
+  model.language_model.layers.13.mlp.experts.100.gate_proj.trellis is F16 [256, 128, 64], want I16 [256, 128, 64]
+RESULT FAIL
+exit=1

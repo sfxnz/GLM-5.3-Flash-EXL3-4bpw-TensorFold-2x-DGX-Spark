@@ -1,0 +1,26 @@
+{
+  "context_length": 2048,
+  "decoder_layers": 45,
+  "device": "cuda",
+  "hidden_size": 4096,
+  "layer_residency": "stream",
+  "model": "brandonmusic/GLM-5.3-Flash-tr3-4bpw",
+  "peak_cuda_allocated_bytes": 33708610048,
+  "peak_cuda_allocated_gb": 33.709,
+  "peak_cuda_reserved_bytes": 35982934016,
+  "peak_cuda_reserved_gb": 35.983,
+  "peak_resident_weight_bytes": 18490337196,
+  "peak_resident_weight_detail": {
+    "buffers": 48448,
+    "parameters": 18490288748,
+    "total": 18490337196
+  },
+  "peak_resident_weight_gb": 18.49,
+  "peak_rss_bytes": 6669021184,
+  "peak_rss_gb": 6.669,
+  "resident_weight_note": "the maximum, over the run, of the materialised parameter+buffer bytes. On the CPU path peak_rss_bytes ALSO counts the safetensors mmap page cache, which is evictable and is not held by the schedule; this figure is not confounded by it. On CUDA, peak_cuda_allocated_bytes is the authoritative number because it includes activations and workspace and has no page cache.",
+  "rss_units_source": "Linux ru_maxrss",
+  "schedule": "layer-outer",
+  "vocab_size": 154880,
+  "windows": 25
+}

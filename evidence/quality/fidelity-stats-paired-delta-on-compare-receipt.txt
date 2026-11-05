@@ -1,0 +1,1 @@
+REFUSED: /c/comparison-receipt.json needs a nonempty per_window list; scalar summaries cannot be paired

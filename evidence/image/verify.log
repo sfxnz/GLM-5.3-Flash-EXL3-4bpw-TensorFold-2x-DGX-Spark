@@ -1,0 +1,41 @@
+tensorfold-native 1.2.2
+"nvidia-sm121"
+"1.2.2"
+{"name":"cuBLASLt","found":true,"usable":null,"problem":null}
+{"name":"cuBLAS","found":true,"usable":null,"problem":null}
+{"name":"rocBLAS","found":false,"usable":null,"problem":null}
+{"name":"hipBLASLt","found":false,"usable":null,"problem":null}
+{"name":"MIOpen","found":false,"usable":null,"problem":null}
+{"name":"AOTriton","found":false,"usable":null,"problem":null}
+{"name":"NCCL","found":true,"usable":null,"problem":null}
+{"name":"RDMA verbs","found":true,"usable":null,"problem":null}
+{"name":"TensorFold video","found":false,"usable":null,"problem":null}
+{"name":"libjpeg-turbo","found":true,"usable":true,"problem":null}
+{"name":"libwebp","found":true,"usable":true,"problem":null}
+{"name":"TensorFold grammar","found":true,"usable":null,"problem":null}
+{"name":"RCCL","found":false,"usable":null,"problem":null}
+{"name":"MCDMA RPC","found":false,"usable":null,"problem":null}
+{"name":"MCDMA fabric","found":false,"usable":null,"problem":null}
+ibverbs-providers:arm64	50.0-2ubuntu0.2
+libcublas-13-0	13.1.1.3-1
+libibverbs1:arm64	50.0-2ubuntu0.2
+libnccl2	2.30.7-1+cuda13.3
+/usr/lib/aarch64-linux-gnu/libibverbs/libmlx5-rdmav34.so
+total 5096
+-rwxr-xr-x 1 root root 2980008 Nov  3 18:50 libtfgrammar.so
+-rwxr-xr-x 1 root root  954288 Nov  4 13:07 libturbojpeg.so.0
+-rwxr-xr-x 1 root root 1279304 Nov  4 13:07 libwebpdecoder.so.3
+== /opt/tensorfold/lib/libtfgrammar.so
+	libm.so.6 => /lib/aarch64-linux-gnu/libm.so.6 (0x0000f0a47b5b0000)
+	libc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0000f0a47b3f0000)
+	libpthread.so.0 => /lib/aarch64-linux-gnu/libpthread.so.0 (0x0000f0a47b3c0000)
+	libdl.so.2 => /lib/aarch64-linux-gnu/libdl.so.2 (0x0000f0a47b390000)
+== /opt/tensorfold/lib/libturbojpeg.so.0
+	libc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0000fdd6cdf40000)
+== /opt/tensorfold/lib/libwebpdecoder.so.3
+	libc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0000e8f572110000)
+libjpeg-turbo version 3.1.4.1
+spark1 sha256:1c22cf9fb69d23d4298b56e3319d8dff349a414154759ca0f792621277ce66d4
+spark2 sha256:1c22cf9fb69d23d4298b56e3319d8dff349a414154759ca0f792621277ce66d4
+{"maintainer":"NVIDIA CORPORATION <cudatools@nvidia.com>","org.opencontainers.image.ref.name":"ubuntu","org.opencontainers.image.version":"24.04","tensorfold.archive":"tensorfold-1.2.2-linux-aarch64.tar.gz","tensorfold.archive.sha256":"17632c30f761e7f9051255744a17fc36f0b9c0d46343d47617bb34e7ec4e4128","tensorfold.version":"1.2.2"} size=1549502371
+OK

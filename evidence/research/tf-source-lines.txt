@@ -1,0 +1,13 @@
+# TensorFold source lines, from git clone of ashhart/TensorFold
+## v1.2.2 (e45cca703994af0363fd6cb5ffb7b21049b21a7c) zig/src/families/glm/cuda_qpack.zig:1
+//! Packed dense linears (glm_mm's tile_packed input): bf16 rows as symmetric 4, 6 or 8-bit codes with fp16 scales.
+## v1.2.2 zig/src/families/glm/cuda_qpack.zig:18 (quantize)
+/// bf16 rows [n, k] -> symmetric ``bits``-bit codes + 2^(bits-1), absmax fp16 scales per 64 (halves to even).
+pub fn quantize(bits: u8, src: []const u16, n: usize, k: usize, words: []u32, scales: []u16) void {
+## v1.2.2 zig/src/families/glm/cuda_start.zig: Fp8OnPages
+51:    if (kv8) return error.Fp8OnPages;
+## main 85e53093b8b6b6de47c7d5e2f2d432268211a8af (v1.2.2-228-g85e53093) zig/src/families/glm/cuda_start.zig: Fp8OnPages
+51:    if (kv8) return error.Fp8OnPages;
+## v1.2.2 zig/src/families/glm/cuda_exl3.zig (EXL3 admission)
+34:    const bits = q.get("bits") orelse std.json.Value{ .null = {} };
+35:    if (bits != .integer or bits.integer != 4) {

@@ -1,0 +1,511 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 3.00kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/nvidia/cuda:13.0.0-base-ubuntu24.04@sha256:6e43a6b02e5f16e4a715953be8b29c40acbe84aed11a61357ef0fc899967fbd9
+#2 DONE 0.0s
+
+#3 [context downloads] load .dockerignore
+#3 transferring downloads: 2B done
+#3 DONE 0.0s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 2B done
+#4 DONE 0.0s
+
+#5 [codecs 1/2] RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev make && rm -rf /var/lib/apt/lists/*
+#5 CACHED
+
+#6 [base 1/1] FROM docker.io/nvidia/cuda:13.0.0-base-ubuntu24.04@sha256:6e43a6b02e5f16e4a715953be8b29c40acbe84aed11a61357ef0fc899967fbd9
+#6 CACHED
+
+#7 [context downloads] load from client
+#7 transferring downloads: 164B done
+#7 DONE 0.0s
+
+#8 [codecs 2/2] RUN --mount=type=bind,from=downloads,target=/dl     printf '%s  %s\n'       d3f9d7ddd998758e1850b37153a7904bdcdeb8cf54a782c772780b0bc50dd553 /dl/libjpeg-turbo-official_3.1.4.1_arm64.deb       e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564 /dl/libwebp-1.6.0.tar.gz | sha256sum -c -  && mkdir -p /out /src/jpeg  && dpkg-deb -x /dl/libjpeg-turbo-official_3.1.4.1_arm64.deb /src/jpeg  && cp -L /src/jpeg/opt/libjpeg-turbo/lib64/libturbojpeg.so.0 /out/  && tar -xzf /dl/libwebp-1.6.0.tar.gz -C /src && cd /src/libwebp-1.6.0  && ./configure --enable-libwebpdecoder --disable-static  && make -C sharpyuv -j"$(nproc)" && make -C src -j"$(nproc)"  && cp -L src/.libs/libwebpdecoder.so.3 /out/
+#8 0.152 /dl/libjpeg-turbo-official_3.1.4.1_arm64.deb: OK
+#8 0.155 /dl/libwebp-1.6.0.tar.gz: OK
+#8 0.324 checking build system type... aarch64-unknown-linux-gnu
+#8 0.375 checking host system type... aarch64-unknown-linux-gnu
+#8 0.375 checking for a BSD-compatible install... /usr/bin/install -c
+#8 0.383 checking whether sleep supports fractional seconds... yes
+#8 0.385 checking filesystem timestamp resolution... 0.01
+#8 0.454 checking whether build environment is sane... yes
+#8 0.462 checking for a race-free mkdir -p... /usr/bin/mkdir -p
+#8 0.463 checking for gawk... no
+#8 0.463 checking for mawk... mawk
+#8 0.463 checking whether make sets $(MAKE)... yes
+#8 0.469 checking whether make supports nested variables... yes
+#8 0.474 checking xargs -n works... yes
+#8 0.478 checking whether make supports the include directive... yes (GNU style)
+#8 0.484 checking for gcc... gcc
+#8 0.502 checking whether the C compiler works... yes
+#8 0.524 checking for C compiler default output file name... a.out
+#8 0.525 checking for suffix of executables... 
+#8 0.551 checking whether we are cross compiling... no
+#8 0.583 checking for suffix of object files... o
+#8 0.597 checking whether the compiler supports GNU C... yes
+#8 0.607 checking whether gcc accepts -g... yes
+#8 0.624 checking for gcc option to enable C11 features... none needed
+#8 0.668 checking whether gcc understands -c and -o together... yes
+#8 0.695 checking dependency style of gcc... gcc3
+#8 0.719 checking for ar... ar
+#8 0.719 checking the archiver (ar) interface... ar
+#8 0.739 checking how to print strings... printf
+#8 0.740 checking for a sed that does not truncate output... /usr/bin/sed
+#8 0.744 checking for grep that handles long lines and -e... /usr/bin/grep
+#8 0.746 checking for egrep... /usr/bin/grep -E
+#8 0.748 checking for fgrep... /usr/bin/grep -F
+#8 0.749 checking for ld used by gcc... /usr/bin/ld
+#8 0.754 checking if the linker (/usr/bin/ld) is GNU ld... yes
+#8 0.756 checking for BSD- or MS-compatible name lister (nm)... /usr/bin/nm -B
+#8 0.758 checking the name lister (/usr/bin/nm -B) interface... BSD nm
+#8 0.775 checking whether ln -s works... yes
+#8 0.775 checking the maximum length of command line arguments... 1572864
+#8 0.781 checking how to convert aarch64-unknown-linux-gnu file names to aarch64-unknown-linux-gnu format... func_convert_file_noop
+#8 0.781 checking how to convert aarch64-unknown-linux-gnu file names to toolchain format... func_convert_file_noop
+#8 0.781 checking for /usr/bin/ld option to reload object files... -r
+#8 0.781 checking for file... :
+#8 0.781 checking for objdump... objdump
+#8 0.782 checking how to recognize dependent libraries... pass_all
+#8 0.782 checking for dlltool... no
+#8 0.782 checking how to associate runtime and link libraries... printf %s\n
+#8 0.782 checking for ranlib... ranlib
+#8 0.782 checking for archiver @FILE support... @
+#8 0.804 checking for strip... strip
+#8 0.804 checking command to parse /usr/bin/nm -B output from gcc object... ok
+#8 0.863 checking for sysroot... no
+#8 0.863 checking for a working dd... /usr/bin/dd
+#8 0.868 checking how to truncate binary pipes... /usr/bin/dd bs=4096 count=1
+#8 0.873 checking for mt... no
+#8 0.873 checking if : is a manifest tool... no
+#8 0.878 checking for stdio.h... yes
+#8 0.897 checking for stdlib.h... yes
+#8 0.921 checking for string.h... yes
+#8 0.937 checking for inttypes.h... yes
+#8 0.964 checking for stdint.h... yes
+#8 0.981 checking for strings.h... yes
+#8 0.997 checking for sys/stat.h... yes
+#8 1.023 checking for sys/types.h... yes
+#8 1.050 checking for unistd.h... yes
+#8 1.081 checking for dlfcn.h... yes
+#8 1.110 checking for objdir... .libs
+#8 1.159 checking if gcc supports -fno-rtti -fno-exceptions... no
+#8 1.174 checking for gcc option to produce PIC... -fPIC -DPIC
+#8 1.174 checking if gcc PIC flag -fPIC -DPIC works... yes
+#8 1.195 checking if gcc static flag -static works... yes
+#8 1.239 checking if gcc supports -c -o file.o... yes
+#8 1.261 checking if gcc supports -c -o file.o... (cached) yes
+#8 1.261 checking whether the gcc linker (/usr/bin/ld) supports shared libraries... yes
+#8 1.269 checking whether -lc should be explicitly linked in... no
+#8 1.284 checking dynamic linker characteristics... GNU/Linux ld.so
+#8 1.316 checking how to hardcode library paths into programs... immediate
+#8 1.316 checking whether stripping libraries is possible... yes
+#8 1.317 checking if libtool supports shared libraries... yes
+#8 1.317 checking whether to build shared libraries... yes
+#8 1.317 checking whether to build static libraries... no
+#8 1.317 checking for a sed that does not truncate output... (cached) /usr/bin/sed
+#8 1.318 checking whether byte ordering is bigendian... no
+#8 1.363 checking whether libwebpmux is to be built... yes
+#8 1.363 checking whether libwebpdemux is to be built... yes
+#8 1.363 checking whether decoder library is to be built... yes
+#8 1.363 checking whether libwebpextras is to be built... no
+#8 1.363 checking whether asserts are enabled... no
+#8 1.363 checking whether gcc supports -fvisibility=hidden... yes
+#8 1.381 checking whether gcc supports -Wall... yes
+#8 1.397 checking whether gcc supports -Wconstant-conversion... no
+#8 1.416 checking whether gcc supports -Wdeclaration-after-statement... yes
+#8 1.433 checking whether gcc supports -Wextra... yes
+#8 1.451 checking whether gcc supports -Wextra-semi-stmt... no
+#8 1.465 checking whether gcc supports -Wfloat-conversion... yes
+#8 1.477 checking whether gcc supports -Wformat -Wformat-nonliteral... yes
+#8 1.491 checking whether gcc supports -Wformat -Wformat-security... yes
+#8 1.508 checking whether gcc supports -Wmissing-declarations... yes
+#8 1.519 checking whether gcc supports -Wmissing-prototypes... yes
+#8 1.535 checking whether gcc supports -Wold-style-definition... yes
+#8 1.553 checking whether gcc supports -Wparentheses-equality... no
+#8 1.568 checking whether gcc supports -Wshadow... yes
+#8 1.585 checking whether gcc supports -Wshorten-64-to-32... no
+#8 1.603 checking whether gcc supports -Wstrict-prototypes... yes
+#8 1.615 checking whether gcc supports -Wundef... yes
+#8 1.626 checking whether gcc supports -Wunreachable-code-aggressive... no
+#8 1.644 checking whether gcc supports -Wunreachable-code... yes
+#8 1.656 checking whether gcc supports -Wunused-but-set-variable... yes
+#8 1.668 checking whether gcc supports -Wunused... yes
+#8 1.678 checking whether gcc supports -Wvla... yes
+#8 1.697 ./configure: line 14870: -a: command not found
+#8 1.697 checking whether gcc supports -msse4.1... no
+#8 1.708 checking for smmintrin.h... no
+#8 1.727 checking whether gcc supports -msse2... no
+#8 1.735 checking for emmintrin.h... no
+#8 1.764 checking for __builtin_bswap16... yes
+#8 1.785 checking for __builtin_bswap32... yes
+#8 1.811 checking for __builtin_bswap64... yes
+#8 1.831 configure: checking for threading support...
+#8 1.831 checking if compiler needs -Werror to reject unknown flags... no
+#8 1.852 checking for the pthreads library -lpthreads... no
+#8 1.873 checking whether pthreads work without any flags... yes
+#8 1.897 checking for joinable pthread attribute... PTHREAD_CREATE_JOINABLE
+#8 1.928 checking if more special flags are required for pthreads... no
+#8 1.928 checking for PTHREAD_PRIO_INHERIT... yes
+#8 1.952 configure: checking if threading is enabled... yes
+#8 1.954 checking for GL/glut.h... no
+#8 1.976 checking for GLUT/glut.h... no
+#8 1.998 checking for OpenGL/glut.h... no
+#8 2.018 configure: Not building vwebp. OpenGL libraries and --enable-libwebpdemux are required.
+#8 2.018 checking for sdl2-config... no
+#8 2.018 checking for SDL2/SDL.h... no
+#8 2.037 configure: Not building vwebp-sdl. SDL library is required.
+#8 2.037 checking for libpng-config... configure: WARNING: SDL2 library not available - no SDL.h
+#8 2.037 no
+#8 2.037 checking for libpng16-config... no
+#8 2.037 checking for libpng15-config... no
+#8 2.037 checking for libpng14-config... no
+#8 2.037 checking for libpng12-config... no
+#8 2.037 checking for png.h... configure: WARNING: png library not available - no png.h
+#8 2.070 no
+#8 2.070 checking for jpeglib.h... no
+#8 2.089 checking for tiffio.h... configure: WARNING: jpeg library not available - no jpeglib.h
+#8 2.121 configure: WARNING: tiff library not available - no tiffio.h
+#8 2.121 no
+#8 2.122 checking for gif_lib.h... no
+#8 2.143 configure: Not building anim_diff. libgif and --enable-libwebpdemux are required.
+#8 2.143 configure: Not building gif2webp. libgif and --enable-libwebpmux are required.
+#8 2.143 configure: WARNING: gif library not available - no gif_lib.h
+#8 2.143 checking if --enable-swap-16bit-csp option is specified... no
+#8 2.143 checking if --disable-near-lossless option is specified... no
+#8 2.158 checking that generated files are newer than configure... done
+#8 2.158 configure: creating ./config.status
+#8 2.586 config.status: creating Makefile
+#8 2.596 config.status: creating src/Makefile
+#8 2.610 config.status: creating man/Makefile
+#8 2.624 config.status: creating examples/Makefile
+#8 2.637 config.status: creating extras/Makefile
+#8 2.649 config.status: creating imageio/Makefile
+#8 2.663 config.status: creating sharpyuv/Makefile
+#8 2.676 config.status: creating sharpyuv/libsharpyuv.pc
+#8 2.689 config.status: creating src/dec/Makefile
+#8 2.703 config.status: creating src/enc/Makefile
+#8 2.717 config.status: creating src/dsp/Makefile
+#8 2.733 config.status: creating src/demux/Makefile
+#8 2.746 config.status: creating src/mux/Makefile
+#8 2.758 config.status: creating src/utils/Makefile
+#8 2.771 config.status: creating src/libwebp.pc
+#8 2.785 config.status: creating src/libwebpdecoder.pc
+#8 2.799 config.status: creating src/demux/libwebpdemux.pc
+#8 2.814 config.status: creating src/mux/libwebpmux.pc
+#8 2.827 config.status: creating src/webp/config.h
+#8 2.839 config.status: executing depfiles commands
+#8 3.301 config.status: executing libtool commands
+#8 3.309 configure:
+#8 3.309 WebP Configuration Summary
+#8 3.309 --------------------------
+#8 3.309 
+#8 3.309 Shared libraries: yes
+#8 3.309 Static libraries: no
+#8 3.309 Threading support: yes
+#8 3.309 libwebp: yes
+#8 3.309 libwebpdecoder: yes
+#8 3.309 libwebpdemux: yes
+#8 3.309 libwebpmux: yes
+#8 3.309 libwebpextras: no
+#8 3.309 
+#8 3.309 Tools:
+#8 3.309 cwebp : yes
+#8 3.309   Input format support
+#8 3.309   ====================
+#8 3.309   JPEG : no
+#8 3.309   PNG  : no
+#8 3.309   TIFF : no
+#8 3.309   WIC  : no
+#8 3.309 dwebp : yes
+#8 3.309   Output format support
+#8 3.309   =====================
+#8 3.309   PNG  : no
+#8 3.309   WIC  : no
+#8 3.309 GIF support : no
+#8 3.309 anim_diff   : no
+#8 3.309 gif2webp    : no
+#8 3.309 img2webp    : yes
+#8 3.309 webpmux     : yes
+#8 3.309 vwebp       : no
+#8 3.309 webpinfo    : yes
+#8 3.309 SDL support : no
+#8 3.309 vwebp_sdl   : no
+#8 3.309 
+#8 3.339 make: Entering directory '/src/libwebp-1.6.0/sharpyuv'
+#8 3.339   CC       libsharpyuv_la-sharpyuv_cpu.lo
+#8 3.340   CC       libsharpyuv_la-sharpyuv_dsp.lo
+#8 3.340   CC       libsharpyuv_la-sharpyuv_csp.lo
+#8 3.340   CC       libsharpyuv_la-sharpyuv.lo
+#8 3.341   CC       libsharpyuv_la-sharpyuv_gamma.lo
+#8 3.341   CC       libsharpyuv_sse2_la-sharpyuv_sse2.lo
+#8 3.341   CC       libsharpyuv_neon_la-sharpyuv_neon.lo
+#8 3.404   CCLD     libsharpyuv_sse2.la
+#8 3.535   CCLD     libsharpyuv_neon.la
+#8 3.620   CCLD     libsharpyuv.la
+#8 3.744 make: Leaving directory '/src/libwebp-1.6.0/sharpyuv'
+#8 3.746 make: Entering directory '/src/libwebp-1.6.0/src'
+#8 3.748 Making all in dec
+#8 3.750 make[1]: Entering directory '/src/libwebp-1.6.0/src/dec'
+#8 3.751   CC       libwebpdecode_la-buffer_dec.lo
+#8 3.751   CC       libwebpdecode_la-alpha_dec.lo
+#8 3.752   CC       libwebpdecode_la-idec_dec.lo
+#8 3.752   CC       libwebpdecode_la-frame_dec.lo
+#8 3.752   CC       libwebpdecode_la-io_dec.lo
+#8 3.752   CC       libwebpdecode_la-tree_dec.lo
+#8 3.752   CC       libwebpdecode_la-quant_dec.lo
+#8 3.752   CC       libwebpdecode_la-vp8_dec.lo
+#8 3.753   CC       libwebpdecode_la-vp8l_dec.lo
+#8 3.753   CC       libwebpdecode_la-webp_dec.lo
+#8 4.084   CCLD     libwebpdecode.la
+#8 4.215 make[1]: Leaving directory '/src/libwebp-1.6.0/src/dec'
+#8 4.215 Making all in enc
+#8 4.217 make[1]: Entering directory '/src/libwebp-1.6.0/src/enc'
+#8 4.217   CC       libwebpencode_la-alpha_enc.lo
+#8 4.218   CC       libwebpencode_la-config_enc.lo
+#8 4.218   CC       libwebpencode_la-analysis_enc.lo
+#8 4.218   CC       libwebpencode_la-backward_references_cost_enc.lo
+#8 4.218   CC       libwebpencode_la-backward_references_enc.lo
+#8 4.219   CC       libwebpencode_la-cost_enc.lo
+#8 4.219   CC       libwebpencode_la-histogram_enc.lo
+#8 4.219   CC       libwebpencode_la-filter_enc.lo
+#8 4.219   CC       libwebpencode_la-frame_enc.lo
+#8 4.219   CC       libwebpencode_la-near_lossless_enc.lo
+#8 4.219   CC       libwebpencode_la-picture_enc.lo
+#8 4.219   CC       libwebpencode_la-picture_csp_enc.lo
+#8 4.219   CC       libwebpencode_la-iterator_enc.lo
+#8 4.219   CC       libwebpencode_la-picture_psnr_enc.lo
+#8 4.220   CC       libwebpencode_la-predictor_enc.lo
+#8 4.220   CC       libwebpencode_la-picture_rescale_enc.lo
+#8 4.220   CC       libwebpencode_la-quant_enc.lo
+#8 4.220   CC       libwebpencode_la-syntax_enc.lo
+#8 4.220   CC       libwebpencode_la-picture_tools_enc.lo
+#8 4.222   CC       libwebpencode_la-token_enc.lo
+#8 4.316   CC       libwebpencode_la-tree_enc.lo
+#8 4.332   CC       libwebpencode_la-vp8l_enc.lo
+#8 4.333   CC       libwebpencode_la-webp_enc.lo
+#8 4.704   CCLD     libwebpencode.la
+#8 4.919 make[1]: Leaving directory '/src/libwebp-1.6.0/src/enc'
+#8 4.919 Making all in dsp
+#8 4.922 make[1]: Entering directory '/src/libwebp-1.6.0/src/dsp'
+#8 4.923   CC       libwebpdsp_la-alpha_processing.lo
+#8 4.924   CC       libwebpdsp_la-cpu.lo
+#8 4.924   CC       libwebpdsp_la-dec_clip_tables.lo
+#8 4.924   CC       libwebpdsp_la-dec.lo
+#8 4.924   CC       libwebpdsp_la-lossless.lo
+#8 4.925   CC       libwebpdsp_la-filters.lo
+#8 4.925   CC       libwebpdsp_la-rescaler.lo
+#8 4.925   CC       libwebpdsp_la-upsampling.lo
+#8 4.925   CC       libwebpdsp_la-yuv.lo
+#8 4.926   CC       libwebpdsp_la-cost.lo
+#8 4.926   CC       libwebpdsp_la-lossless_enc.lo
+#8 4.926   CC       libwebpdsp_la-enc.lo
+#8 4.926   CC       libwebpdsp_sse2_la-cost_sse2.lo
+#8 4.927   CC       libwebpdsp_la-ssim.lo
+#8 4.927   CC       libwebpdsp_sse2_la-lossless_enc_sse2.lo
+#8 4.927   CC       libwebpdsp_sse2_la-enc_sse2.lo
+#8 4.927   CC       libwebpdsp_sse2_la-ssim_sse2.lo
+#8 4.928   CC       libwebpdspdecode_sse2_la-alpha_processing_sse2.lo
+#8 4.928   CC       libwebpdspdecode_sse2_la-dec_sse2.lo
+#8 4.928   CC       libwebpdspdecode_sse2_la-filters_sse2.lo
+#8 4.991   CC       libwebpdspdecode_sse2_la-lossless_sse2.lo
+#8 4.996   CC       libwebpdspdecode_sse2_la-rescaler_sse2.lo
+#8 4.999   CC       libwebpdspdecode_sse2_la-yuv_sse2.lo
+#8 4.999   CC       libwebpdspdecode_sse2_la-upsampling_sse2.lo
+#8 4.999   CC       libwebpdsp_sse41_la-enc_sse41.lo
+#8 5.002   CC       libwebpdspdecode_sse41_la-alpha_processing_sse41.lo
+#8 5.002   CC       libwebpdsp_sse41_la-lossless_enc_sse41.lo
+#8 5.003   CC       libwebpdspdecode_sse41_la-dec_sse41.lo
+#8 5.005   CC       libwebpdspdecode_sse41_la-lossless_sse41.lo
+#8 5.005   CC       libwebpdspdecode_sse41_la-upsampling_sse41.lo
+#8 5.016   CC       libwebpdspdecode_sse41_la-yuv_sse41.lo
+#8 5.019   CC       libwebpdsp_avx2_la-lossless_enc_avx2.lo
+#8 5.021   CC       libwebpdspdecode_avx2_la-lossless_avx2.lo
+#8 5.037   CC       libwebpdsp_neon_la-cost_neon.lo
+#8 5.040   CC       libwebpdsp_neon_la-enc_neon.lo
+#8 5.041   CC       libwebpdsp_neon_la-lossless_enc_neon.lo
+#8 5.055   CC       libwebpdspdecode_neon_la-alpha_processing_neon.lo
+#8 5.058   CC       libwebpdspdecode_neon_la-dec_neon.lo
+#8 5.065   CC       libwebpdspdecode_neon_la-filters_neon.lo
+#8 5.066   CC       libwebpdspdecode_neon_la-lossless_neon.lo
+#8 5.069   CC       libwebpdspdecode_neon_la-rescaler_neon.lo
+#8 5.070   CC       libwebpdspdecode_neon_la-upsampling_neon.lo
+#8 5.072   CC       libwebpdspdecode_neon_la-yuv_neon.lo
+#8 5.073   CC       libwebpdsp_msa_la-enc_msa.lo
+#8 5.074   CC       libwebpdsp_msa_la-lossless_enc_msa.lo
+#8 5.075   CC       libwebpdspdecode_msa_la-dec_msa.lo
+#8 5.078   CC       libwebpdspdecode_msa_la-filters_msa.lo
+#8 5.078   CC       libwebpdspdecode_msa_la-lossless_msa.lo
+#8 5.091   CC       libwebpdspdecode_msa_la-rescaler_msa.lo
+#8 5.098   CC       libwebpdspdecode_msa_la-upsampling_msa.lo
+#8 5.126   CC       libwebpdsp_mips32_la-cost_mips32.lo
+#8 5.138   CC       libwebpdsp_mips32_la-enc_mips32.lo
+#8 5.142   CC       libwebpdsp_mips32_la-lossless_enc_mips32.lo
+#8 5.149   CC       libwebpdspdecode_mips32_la-dec_mips32.lo
+#8 5.153   CC       libwebpdspdecode_mips32_la-rescaler_mips32.lo
+#8 5.155   CC       libwebpdspdecode_mips32_la-yuv_mips32.lo
+#8 5.166   CC       libwebpdsp_mips_dsp_r2_la-cost_mips_dsp_r2.lo
+#8 5.172   CC       libwebpdsp_mips_dsp_r2_la-enc_mips_dsp_r2.lo
+#8 5.175   CC       libwebpdsp_mips_dsp_r2_la-lossless_enc_mips_dsp_r2.lo
+#8 5.207   CC       libwebpdspdecode_mips_dsp_r2_la-alpha_processing_mips_dsp_r2.lo
+#8 5.211   CC       libwebpdspdecode_mips_dsp_r2_la-dec_mips_dsp_r2.lo
+#8 5.216   CC       libwebpdspdecode_mips_dsp_r2_la-filters_mips_dsp_r2.lo
+#8 5.226   CC       libwebpdspdecode_mips_dsp_r2_la-lossless_mips_dsp_r2.lo
+#8 5.232   CC       libwebpdspdecode_mips_dsp_r2_la-rescaler_mips_dsp_r2.lo
+#8 5.233   CC       libwebpdspdecode_mips_dsp_r2_la-upsampling_mips_dsp_r2.lo
+#8 5.237   CC       libwebpdspdecode_mips_dsp_r2_la-yuv_mips_dsp_r2.lo
+#8 5.241   CC       libwebpdspdecode_la-alpha_processing.lo
+#8 5.241   CC       libwebpdspdecode_la-cpu.lo
+#8 5.253   CC       libwebpdspdecode_la-dec.lo
+#8 5.255   CC       libwebpdspdecode_la-dec_clip_tables.lo
+#8 5.264   CC       libwebpdspdecode_la-filters.lo
+#8 5.265   CC       libwebpdspdecode_la-lossless.lo
+#8 5.275   CC       libwebpdspdecode_la-rescaler.lo
+#8 5.285   CC       libwebpdspdecode_la-upsampling.lo
+#8 5.292   CC       libwebpdspdecode_la-yuv.lo
+#8 5.295   CCLD     libwebpdspdecode_sse2.la
+#8 5.302   CCLD     libwebpdspdecode_sse41.la
+#8 5.307   CCLD     libwebpdspdecode_avx2.la
+#8 5.308   CCLD     libwebpdspdecode_msa.la
+#8 5.314   CCLD     libwebpdspdecode_mips32.la
+#8 5.324   CCLD     libwebpdspdecode_mips_dsp_r2.la
+#8 5.392   CCLD     libwebpdsp_avx2.la
+#8 5.403   CCLD     libwebpdsp_mips32.la
+#8 5.413   CCLD     libwebpdsp_sse41.la
+#8 5.414   CCLD     libwebpdsp_msa.la
+#8 5.418   CCLD     libwebpdsp_sse2.la
+#8 5.447   CCLD     libwebpdsp_mips_dsp_r2.la
+#8 5.651   CCLD     libwebpdspdecode_neon.la
+#8 5.760   CCLD     libwebpdspdecode.la
+#8 5.760   CCLD     libwebpdsp_neon.la
+#8 5.894   CCLD     libwebpdsp.la
+#8 6.404 make[1]: Leaving directory '/src/libwebp-1.6.0/src/dsp'
+#8 6.404 Making all in utils
+#8 6.406 make[1]: Entering directory '/src/libwebp-1.6.0/src/utils'
+#8 6.407   CC       bit_reader_utils.lo
+#8 6.407   CC       color_cache_utils.lo
+#8 6.408   CC       filters_utils.lo
+#8 6.408   CC       huffman_utils.lo
+#8 6.408   CC       palette.lo
+#8 6.408   CC       rescaler_utils.lo
+#8 6.408   CC       quant_levels_dec_utils.lo
+#8 6.409   CC       thread_utils.lo
+#8 6.409   CC       random_utils.lo
+#8 6.409   CC       bit_writer_utils.lo
+#8 6.409   CC       utils.lo
+#8 6.409   CC       huffman_encode_utils.lo
+#8 6.410   CC       quant_levels_utils.lo
+#8 6.556   CCLD     libwebputils.la
+#8 6.556   CCLD     libwebputilsdecode.la
+#8 6.690 make[1]: Leaving directory '/src/libwebp-1.6.0/src/utils'
+#8 6.690 Making all in .
+#8 6.691 make[1]: Entering directory '/src/libwebp-1.6.0/src'
+#8 6.692   CCLD     libwebp.la
+#8 6.692   CCLD     libwebpdecoder.la
+#8 6.881 make[1]: Leaving directory '/src/libwebp-1.6.0/src'
+#8 6.881 Making all in mux
+#8 6.883 make[1]: Entering directory '/src/libwebp-1.6.0/src/mux'
+#8 6.884   CC       anim_encode.lo
+#8 6.884   CC       muxinternal.lo
+#8 6.884   CC       muxedit.lo
+#8 6.885   CC       muxread.lo
+#8 7.156   CCLD     libwebpmux.la
+#8 7.276 make[1]: Leaving directory '/src/libwebp-1.6.0/src/mux'
+#8 7.276 Making all in demux
+#8 7.278 make[1]: Entering directory '/src/libwebp-1.6.0/src/demux'
+#8 7.279   CC       anim_decode.lo
+#8 7.279   CC       demux.lo
+#8 7.426   CCLD     libwebpdemux.la
+#8 7.553 make[1]: Leaving directory '/src/libwebp-1.6.0/src/demux'
+#8 7.553 make: Leaving directory '/src/libwebp-1.6.0/src'
+#8 DONE 7.6s
+
+#9 [stage-3 1/3] RUN apt-get update && apt-get install -y --no-install-recommends       libcublas-13-0=13.1.1.3-1 libnccl2=2.30.7-1+cuda13.3 libibverbs1 ibverbs-providers  && rm -rf /var/lib/apt/lists/*
+#9 0.301 Get:1 http://ports.ubuntu.com/ubuntu-ports noble InRelease [256 kB]
+#9 1.272 Get:2 http://ports.ubuntu.com/ubuntu-ports noble-updates InRelease [126 kB]
+#9 2.495 Get:3 http://ports.ubuntu.com/ubuntu-ports noble-backports InRelease [126 kB]
+#9 3.862 Get:4 http://ports.ubuntu.com/ubuntu-ports noble-security InRelease [126 kB]
+#9 4.002 Get:5 http://ports.ubuntu.com/ubuntu-ports noble/multiverse arm64 Packages [274 kB]
+#9 4.292 Get:6 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 Packages [19.0 MB]
+#9 15.75 Get:7 https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/sbsa  InRelease [1576 B]
+#9 15.88 Get:8 https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/sbsa  Packages [1880 kB]
+#9 28.38 Get:9 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 Packages [1776 kB]
+#9 31.38 Get:10 http://ports.ubuntu.com/ubuntu-ports noble/restricted arm64 Packages [113 kB]
+#9 31.63 Get:11 http://ports.ubuntu.com/ubuntu-ports noble-updates/universe arm64 Packages [2226 kB]
+#9 36.93 Get:12 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 Packages [1798 kB]
+#9 41.29 Get:13 http://ports.ubuntu.com/ubuntu-ports noble-updates/restricted arm64 Packages [3270 kB]
+#9 49.06 Get:14 http://ports.ubuntu.com/ubuntu-ports noble-updates/multiverse arm64 Packages [107 kB]
+#9 49.37 Get:15 http://ports.ubuntu.com/ubuntu-ports noble-backports/universe arm64 Packages [36.3 kB]
+#9 49.44 Get:16 http://ports.ubuntu.com/ubuntu-ports noble-backports/main arm64 Packages [49.0 kB]
+#9 49.49 Get:17 http://ports.ubuntu.com/ubuntu-ports noble-backports/multiverse arm64 Packages [669 B]
+#9 49.50 Get:18 http://ports.ubuntu.com/ubuntu-ports noble-security/universe arm64 Packages [1649 kB]
+#9 53.64 Get:19 http://ports.ubuntu.com/ubuntu-ports noble-security/restricted arm64 Packages [3148 kB]
+#9 61.96 Get:20 http://ports.ubuntu.com/ubuntu-ports noble-security/multiverse arm64 Packages [102 kB]
+#9 62.18 Get:21 http://ports.ubuntu.com/ubuntu-ports noble-security/main arm64 Packages [1486 kB]
+#9 65.48 Fetched 37.6 MB in 1min 5s (575 kB/s)
+#9 65.48 Reading package lists...
+#9 66.00 W: https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/sbsa/InRelease: Key is stored in legacy trusted.gpg keyring (/etc/apt/trusted.gpg), see the DEPRECATION section in apt-key(8) for details.
+#9 66.01 Reading package lists...
+#9 66.55 Building dependency tree...
+#9 66.72 Reading state information...
+#9 66.91 The following additional packages will be installed:
+#9 66.91   libnl-3-200 libnl-route-3-200
+#9 66.94 The following NEW packages will be installed:
+#9 66.94   ibverbs-providers libcublas-13-0 libibverbs1 libnccl2 libnl-3-200
+#9 66.94   libnl-route-3-200
+#9 67.12 0 upgraded, 6 newly installed, 0 to remove and 64 not upgraded.
+#9 67.12 Need to get 717 MB of archives.
+#9 67.12 After this operation, 950 MB of additional disk space will be used.
+#9 67.12 Get:1 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 libnl-3-200 arm64 3.7.0-0.3build1.1 [57.5 kB]
+#9 67.51 Get:2 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 libnl-route-3-200 arm64 3.7.0-0.3build1.1 [182 kB]
+#9 68.43 Get:3 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 libibverbs1 arm64 50.0-2ubuntu0.2 [67.5 kB]
+#9 68.45 Get:4 https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/sbsa  libcublas-13-0 13.1.1.3-1 [515 MB]
+#9 68.90 Get:5 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 ibverbs-providers arm64 50.0-2ubuntu0.2 [375 kB]
+#9 643.8 Get:6 https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/sbsa  libnccl2 2.30.7-1+cuda13.3 [201 MB]
+#9 879.7 debconf: delaying package configuration, since apt-utils is not installed
+#9 879.8 Fetched 717 MB in 13min 33s (882 kB/s)
+#9 879.8 Selecting previously unselected package libnl-3-200:arm64.
+#9 879.8 (Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 5162 files and directories currently installed.)
+#9 879.8 Preparing to unpack .../0-libnl-3-200_3.7.0-0.3build1.1_arm64.deb ...
+#9 879.8 Unpacking libnl-3-200:arm64 (3.7.0-0.3build1.1) ...
+#9 879.9 Selecting previously unselected package libnl-route-3-200:arm64.
+#9 879.9 Preparing to unpack .../1-libnl-route-3-200_3.7.0-0.3build1.1_arm64.deb ...
+#9 879.9 Unpacking libnl-route-3-200:arm64 (3.7.0-0.3build1.1) ...
+#9 879.9 Selecting previously unselected package libibverbs1:arm64.
+#9 879.9 Preparing to unpack .../2-libibverbs1_50.0-2ubuntu0.2_arm64.deb ...
+#9 879.9 Unpacking libibverbs1:arm64 (50.0-2ubuntu0.2) ...
+#9 880.0 Selecting previously unselected package ibverbs-providers:arm64.
+#9 880.0 Preparing to unpack .../3-ibverbs-providers_50.0-2ubuntu0.2_arm64.deb ...
+#9 880.0 Unpacking ibverbs-providers:arm64 (50.0-2ubuntu0.2) ...
+#9 880.1 Selecting previously unselected package libcublas-13-0.
+#9 880.1 Preparing to unpack .../4-libcublas-13-0_13.1.1.3-1_arm64.deb ...
+#9 880.1 Unpacking libcublas-13-0 (13.1.1.3-1) ...
+#9 881.7 Selecting previously unselected package libnccl2.
+#9 881.7 Preparing to unpack .../5-libnccl2_2.30.7-1+cuda13.3_arm64.deb ...
+#9 881.7 Unpacking libnccl2 (2.30.7-1+cuda13.3) ...
+#9 882.4 Setting up libnccl2 (2.30.7-1+cuda13.3) ...
+#9 882.5 Setting up libnl-3-200:arm64 (3.7.0-0.3build1.1) ...
+#9 882.5 Setting up libcublas-13-0 (13.1.1.3-1) ...
+#9 882.5 Setting up libnl-route-3-200:arm64 (3.7.0-0.3build1.1) ...
+#9 882.5 Setting up libibverbs1:arm64 (50.0-2ubuntu0.2) ...
+#9 882.6 Setting up ibverbs-providers:arm64 (50.0-2ubuntu0.2) ...
+#9 882.8 Processing triggers for libc-bin (2.39-0ubuntu8.5) ...
+#9 DONE 883.0s
+
+#10 [stage-3 2/3] RUN --mount=type=bind,from=downloads,target=/dl     echo "17632c30f761e7f9051255744a17fc36f0b9c0d46343d47617bb34e7ec4e4128  /dl/tensorfold-1.2.2-linux-aarch64.tar.gz" | sha256sum -c -  && mkdir /opt/tensorfold  && tar -xzf /dl/tensorfold-1.2.2-linux-aarch64.tar.gz -C /opt/tensorfold --strip-components=1  && cd /opt/tensorfold && sha256sum -c --quiet SHA256SUMS
+#10 0.160 /dl/tensorfold-1.2.2-linux-aarch64.tar.gz: OK
+#10 DONE 1.0s
+
+#11 [stage-3 3/3] COPY --from=codecs /out/ /opt/tensorfold/lib/
+#11 DONE 0.0s
+
+#12 exporting to image
+#12 exporting layers
+#12 exporting layers 1.2s done
+#12 writing image sha256:1c22cf9fb69d23d4298b56e3319d8dff349a414154759ca0f792621277ce66d4 done
+#12 naming to docker.io/library/tf-glm53:1.2.2 done
+#12 DONE 1.2s

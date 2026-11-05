@@ -1,0 +1,17 @@
+"nvidia-sm121"
+"1.2.2"
+{"name":"cuBLASLt","found":true,"usable":null,"problem":null}
+{"name":"cuBLAS","found":true,"usable":null,"problem":null}
+{"name":"rocBLAS","found":false,"usable":null,"problem":null}
+{"name":"hipBLASLt","found":false,"usable":null,"problem":null}
+{"name":"MIOpen","found":false,"usable":null,"problem":null}
+{"name":"AOTriton","found":false,"usable":null,"problem":null}
+{"name":"NCCL","found":true,"usable":null,"problem":null}
+{"name":"RDMA verbs","found":true,"usable":null,"problem":null}
+{"name":"TensorFold video","found":false,"usable":null,"problem":null}
+{"name":"libjpeg-turbo","found":true,"usable":true,"problem":null}
+{"name":"libwebp","found":true,"usable":true,"problem":null}
+{"name":"TensorFold grammar","found":true,"usable":null,"problem":null}
+{"name":"RCCL","found":false,"usable":null,"problem":null}
+{"name":"MCDMA RPC","found":false,"usable":null,"problem":null}
+{"name":"MCDMA fabric","found":false,"usable":null,"problem":null}

@@ -1,0 +1,35 @@
+== sfxnz/GLM-5.3-Flash-EXL3-4bpw, TensorFold 1.2.2, TP=2: spark1 rank 0 (HTTP) + spark2 rank 1
+ok     head spark1 has docker ssh curl rsync hf ip rdma ss free stat
+ok     ssh spark2; it has docker rsync ip rdma ss free stat
+ok     spark1 enp1s0f1np1 up at 10.100.8.1
+ok     spark1 RoCE HCAs ACTIVE: rocep1s0f1 roceP2p1s0f1
+ok     spark1 has no other GPU container
+ok     spark2 enp1s0f1np1 up at 10.100.8.2
+ok     spark2 RoCE HCAs ACTIVE: rocep1s0f1 roceP2p1s0f1
+ok     spark2 has no other GPU container
+ok     image tf-glm53:1.2.2 on head: sha256:1c22cf9fb69d23d4298b56e3319d8dff349a414154759ca0f792621277ce66d4, TensorFold archive sha256 17632c30f761
+ok     image tf-glm53:1.2.2 on spark2: same id
+ok     head snapshot complete: 120 shards, 175642102880 bytes in /home/sfxnz/projects/data/glm53-exl3/hfstage/hub/models--sfxnz--GLM-5.3-Flash-EXL3-4bpw/snapshots/39a1180b5b4d692d55a7371c75f2e6d00d96e24d
+ok     spark2 snapshot complete
+ok     spark1 ports 8000 29583 29584 free
+ok     spark2 ports 8000 29583 29584 free
+ok     spark1 MemAvailable 115.8 GiB >= 106 GiB
+ok     spark2 MemAvailable 117.9 GiB >= 106 GiB
+...    start rank 1 on spark2
+...    start rank 0 on spark1
+...    wait for /health (about 2 min once the weights sit in page cache; up to 1200s)
+       32s
+       65s
+       91s
+ready after 118s
+[tensorfold] warning: non-loopback server has no API key; requests are open
+[tensorfold] CUDA sm_121 device 0 (NVIDIA GB10, memory shared with the host): model 86.41 GiB; 4 streams at once, the engine's own and 3 more taking 1028 pages of 512 rows (6.40 GiB) as they need them (enough for one at a 524288-token window), 340 MiB fixed each, of 12.3 GiB left after a 12.2 GiB reserve; prompts in passes of up to 2048 rows, a 4.9 GiB prompt cache; own glue kernels
+[tensorfold] serving glm-5.3-flash at http://0.0.0.0:8000/v1 (sampling: temperature 1.0, top_p 0.95; drafts: MTP + copies; context: 524288; loaded in 113.3s)
+endpoint  http://spark1:8000/v1
+try       curl -s http://spark1:8000/v1/chat/completions -H 'content-type: application/json' \
+            -d '{"model": "glm-5.3-flash", "messages": [{"role": "user", "content": "Hello"}]}'
+stop      /home/sfxnz/projects/ai-lab/recipes/GLM-5.3-Flash-EXL3-4bpw-TensorFold-2x-DGX-SPARK/stop.sh
+
+real	2m3.987s
+user	0m2.308s
+sys	0m0.653s

@@ -1,0 +1,11 @@
+suite cf36287c51a18e9361e009ca00a21eb8c0021ab1, 1674 files
+torch 2.13.0a0+9186a08b2c.nv26.07 cuda 13.3 arch ['sm_80', 'sm_86', 'sm_90', 'sm_100', 'sm_110', 'sm_120', 'compute_120']
+transformers 5.16.1 accelerate 1.14.0 numpy 2.1.0
+TORCH_ALLOW_TF32_CUBLAS_OVERRIDE=0 allow_tf32=False float32_matmul_precision=highest
+triton-kernels 1.0.0+gitf797708c.nv26.7 requires pytest, which is not installed.
+usage: fidelity-dataset [-h]
+                        {architectures,capture,panel-binding,reseal,verify,validate,compare,adapt,verify-k3-compat,provenance-template,describe,qualify-root,publish}
+usage: fidelity-stats [-h] {attributable,paired-delta} ...
+usage: hf_capture [-h] --model MODEL [--model-revision MODEL_REVISION]
+forward Glm5NextForConditionalGeneration (1, 64, 154880) finite True
+cutlass/kernels modules loaded: none

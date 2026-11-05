@@ -1,0 +1,3 @@
+source incomplete: no model.safetensors.index.json in /home/sfxnz/.cache/huggingface/hub/models--zai-org--GLM-5.3-Flash-BF16/snapshots/f9fed3bbc82291073373d67452e9f25317ef7577
+exit=1
+no glm53-quant container

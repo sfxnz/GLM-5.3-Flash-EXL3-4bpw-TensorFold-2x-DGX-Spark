@@ -1,0 +1,43 @@
+# convert.sh selftest against a fake 1-shard source: SRC_REPO=<scratch>/fakerepo MEM=8g quant/convert.sh selftest --max_module 0
+# expected: args, recipe and codebook accepted, then a refusal of the fake empty shard
+docker run -d --name glm53-quant-selftest --restart no --gpus all --network none --memory 8g --memory-swap 8g --oom-score-adj 500 --user 1000:1000 -e HOME=/tmp -e PYTHONUNBUFFERED=1 -v /tmp/claude-1000/-home-sfxnz-projects-ai-lab-recipes-GLM-5-3-Flash-EXL3-4bpw-TensorFold-2x-DGX-SPARK/41a586ca-86f5-492d-8b27-8924d8417e05/scratchpad/fakerepo:/tmp/claude-1000/-home-sfxnz-projects-ai-lab-recipes-GLM-5-3-Flash-EXL3-4bpw-TensorFold-2x-DGX-SPARK/41a586ca-86f5-492d-8b27-8924d8417e05/scratchpad/fakerepo:ro -v /home/sfxnz/projects/ai-lab/recipes/GLM-5.3-Flash-EXL3-4bpw-TensorFold-2x-DGX-SPARK/quant:/recipe:ro -v /home/sfxnz/projects/data/glm53-exl3/selftest:/home/sfxnz/projects/data/glm53-exl3/selftest --entrypoint env glm53-quant:exl3-1.6.6 -u TORCH_ALLOW_TF32_CUBLAS_OVERRIDE python3 convert.py -i /tmp/claude-1000/-home-sfxnz-projects-ai-lab-recipes-GLM-5-3-Flash-EXL3-4bpw-TensorFold-2x-DGX-SPARK/41a586ca-86f5-492d-8b27-8924d8417e05/scratchpad/fakerepo/snapshots/f9fed3bbc82291073373d67452e9f25317ef7577 -w /home/sfxnz/projects/data/glm53-exl3/selftest/work -o /home/sfxnz/projects/data/glm53-exl3/selftest/out -rcp /recipe/experts4.yaml -b 4.0 -cb mcg -hb 16 -mb 4 -vb 16 -eb 16 -cr 250 -cc 2048 -d 0 --max_module 0 
+user=1000:1000 net=none mem=8589934592 swap=8589934592 oom_adj=500 mounts=/tmp/claude-1000/-home-sfxnz-projects-ai-lab-recipes-GLM-5-3-Flash-EXL3-4bpw-TensorFold-2x-DGX-SPARK/41a586ca-86f5-492d-8b27-8924d8417e05/scratchpad/fakerepo:rw=false /recipe:rw=false /home/sfxnz/projects/data/glm53-exl3/selftest:rw=true 
+ !! Warning: --recipe given, --bits is used for reporting only
+ -- Creating new job
+    Input directory: /tmp/claude-1000/-home-sfxnz-projects-ai-lab-recipes-GLM-5-3-Flash-EXL3-4bpw-TensorFold-2x-DGX-SPARK/41a586ca-86f5-492d-8b27-8924d8417e05/scratchpad/fakerepo/snapshots/f9fed3bbc82291073373d67452e9f25317ef7577
+    Output directory: /home/sfxnz/projects/data/glm53-exl3/selftest/out
+    Working directory: /home/sfxnz/projects/data/glm53-exl3/selftest/work
+    Calibration size: 250 rows, 2048 columns
+    Target bitrate: 4.0 (decoder), 16 (head)
+    Recipe: /recipe/experts4.yaml (2 tensors)
+    Output scales: auto
+    Codebook: mcg
+ -- Swapping to system memory disabled (integrated GPU)
+Traceback (most recent call last):
+  File "/opt/exllamav3/convert.py", line 11, in <module>
+    main(_in_args, _job_state)
+  File "/usr/local/lib/python3.12/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/exllamav3/exllamav3/conversion/convert_model.py", line 1410, in main
+    config, model, mtp_model, vision_model, tokenizer, use_reference_state = get_base_model(args)
+                                                                             ^^^^^^^^^^^^^^^^^^^^
+  File "/opt/exllamav3/exllamav3/conversion/convert_model.py", line 411, in get_base_model
+    config = Config.from_directory(args["in_dir"])
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/exllamav3/exllamav3/model/config.py", line 294, in from_directory
+    config = config_class(directory, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/exllamav3/exllamav3/architecture/glm5_next.py", line 38, in __init__
+    super().__init__(
+  File "/opt/exllamav3/exllamav3/model/config.py", line 163, in __init__
+    self.stc = SafetensorsCollection(directory, kwargs.get("load_method"), self.get_tensor_name_fixes())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/exllamav3/exllamav3/loader/safetensors.py", line 427, in __init__
+    self.add_tensor_files(directory)
+  File "/opt/exllamav3/exllamav3/loader/safetensors.py", line 461, in add_tensor_files
+    header = read_header(st_file, self.tensor_name_fixes)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/exllamav3/exllamav3/loader/safetensors.py", line 123, in read_header
+    raise ValueError(f"{filename} is too small to be a safetensors file")
+ValueError: /tmp/claude-1000/-home-sfxnz-projects-ai-lab-recipes-GLM-5-3-Flash-EXL3-4bpw-TensorFold-2x-DGX-SPARK/41a586ca-86f5-492d-8b27-8924d8417e05/scratchpad/fakerepo/snapshots/f9fed3bbc82291073373d67452e9f25317ef7577/model-00001-of-00001.safetensors is too small to be a safetensors file

@@ -1,0 +1,1 @@
+knob tr3-bf16-p4: env [-e TF_GLM_DENSE_BITS=16 -e TF_GLM_HEAD_BITS=16] args [--context 524288 --parallel 4 --vision]

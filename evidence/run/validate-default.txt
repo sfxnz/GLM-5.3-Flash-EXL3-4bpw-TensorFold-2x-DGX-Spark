@@ -1,0 +1,56 @@
+== sfxnz/GLM-5.3-Flash-EXL3-4bpw, TensorFold 1.2.2, TP=2: spark1 rank 0 (HTTP) + spark2 rank 1
+config (recipe.conf, environment wins):
+  MODEL=sfxnz/GLM-5.3-Flash-EXL3-4bpw
+  REVISION=unpublished
+  SHARDS=unpublished
+  SHARD_BYTES=unpublished
+  HF_INCLUDE=*.safetensors *.json *.jinja LICENSE
+  HF_CACHE=/home/sfxnz/.cache/huggingface
+  IMAGE=tf-glm53:1.2.2
+  TF_VERSION=1.2.2
+  TF_SHA256=17632c30f761e7f9051255744a17fc36f0b9c0d46343d47617bb34e7ec4e4128
+  SERVED_NAME=glm-5.3-flash
+  PORT=8000
+  CONTEXT=524288
+  PARALLEL=4
+  WORKER=spark2
+  IFACE=enp1s0f1np1
+  HEAD_IP=
+  WORKER_IP=
+  HCA=rocep1s0f1,roceP2p1s0f1
+  ROCE_HCA=rocep1s0f1
+  NCCL_PORT=29583
+  MEM_GATE_GIB=106
+  FORCE=0
+  READY_TIMEOUT=1200
+  LABEL=ai-lab.recipe=glm53-exl3-tensorfold
+  NAME_PREFIX=tf-glm53-rank
+  snapshot=/home/sfxnz/.cache/huggingface/hub/models--sfxnz--GLM-5.3-Flash-EXL3-4bpw/snapshots/unpublished
+REFUSE the pack is not pinned: REVISION=unpublished SHARDS=unpublished SHARD_BYTES=unpublished (fill them in recipe.conf once sfxnz/GLM-5.3-Flash-EXL3-4bpw is published)
+ok     head spark1 has docker ssh curl rsync hf ip rdma ss free stat
+ok     ssh spark2; it has docker rsync ip rdma ss free stat
+ok     spark1 enp1s0f1np1 up at 10.100.8.1
+ok     spark1 RoCE HCAs ACTIVE: rocep1s0f1 roceP2p1s0f1
+ok     spark1 has no other GPU container
+ok     spark2 enp1s0f1np1 up at 10.100.8.2
+ok     spark2 RoCE HCAs ACTIVE: rocep1s0f1 roceP2p1s0f1
+REFUSE spark2 runs GPU container glm53-quant-probe-b glm53-quant:exl3-1.6.6; this recipe needs both GPUs to itself and never stops it
+ok     image tf-glm53:1.2.2 on head: sha256:1c22cf9fb69d23d4298b56e3319d8dff349a414154759ca0f792621277ce66d4, TensorFold archive sha256 17632c30f761
+ok     image tf-glm53:1.2.2 on spark2: same id
+skip   weights: the pack is not pinned
+ok     spark1 ports 8000 29583 29584 free
+ok     spark2 ports 8000 29583 29584 free
+ok     spark1 MemAvailable 113.5 GiB >= 106 GiB
+--- free -h on spark1
+               total        used        free      shared  buff/cache   available
+Mem:           121Gi       8.2Gi        36Gi       204Ki        77Gi       113Gi
+Swap:           15Gi       2.2Gi        13Gi
+--- free -h on spark2
+               total        used        free      shared  buff/cache   available
+Mem:           121Gi        67Gi       3.8Gi        48Mi        51Gi        54Gi
+Swap:           15Gi       418Mi        15Gi
+REFUSE MemAvailable below the 106 GiB gate: spark2 54.0 GiB. Free memory first (no sudo, no cache drops), or set FORCE=1
+argv rank1 spark2: docker run -d --name tf-glm53-rank1 --label ai-lab.recipe=glm53-exl3-tensorfold --gpus all --network host --ipc host --device /dev/infiniband --ulimit memlock=-1 --ulimit core=0 --oom-score-adj 1000 -v /home/sfxnz/.cache/huggingface/hub/models--sfxnz--GLM-5.3-Flash-EXL3-4bpw:/home/sfxnz/.cache/huggingface/hub/models--sfxnz--GLM-5.3-Flash-EXL3-4bpw:ro -e TF_GLM_RANK=1 -e TF_GLM_WORLD=2 -e NCCL_COMM_ID=10.100.8.1:29583 -e NCCL_SOCKET_IFNAME=enp1s0f1np1 -e NCCL_IB_HCA=rocep1s0f1\,roceP2p1s0f1 -e TF_ROCE_HCA=rocep1s0f1 tf-glm53:1.2.2 tensorfold-native serve /home/sfxnz/.cache/huggingface/hub/models--sfxnz--GLM-5.3-Flash-EXL3-4bpw/snapshots/unpublished --host 0.0.0.0 --port 8000 --name glm-5.3-flash --context 524288 --parallel 4 --vision --no-update-check
+argv rank0 spark1: docker run -d --name tf-glm53-rank0 --label ai-lab.recipe=glm53-exl3-tensorfold --gpus all --network host --ipc host --device /dev/infiniband --ulimit memlock=-1 --ulimit core=0 --oom-score-adj 1000 -v /home/sfxnz/.cache/huggingface/hub/models--sfxnz--GLM-5.3-Flash-EXL3-4bpw:/home/sfxnz/.cache/huggingface/hub/models--sfxnz--GLM-5.3-Flash-EXL3-4bpw:ro -e TF_GLM_RANK=0 -e TF_GLM_WORLD=2 -e NCCL_COMM_ID=10.100.8.1:29583 -e NCCL_SOCKET_IFNAME=enp1s0f1np1 -e NCCL_IB_HCA=rocep1s0f1\,roceP2p1s0f1 -e TF_ROCE_HCA=rocep1s0f1 tf-glm53:1.2.2 tensorfold-native serve /home/sfxnz/.cache/huggingface/hub/models--sfxnz--GLM-5.3-Flash-EXL3-4bpw/snapshots/unpublished --host 0.0.0.0 --port 8000 --name glm-5.3-flash --context 524288 --parallel 4 --vision --no-update-check
+WOULD  wait up to 1200s for http://127.0.0.1:8000/health, then print rank 0's startup lines
+VALIDATE_ONLY: run.sh would refuse (3 reasons above)

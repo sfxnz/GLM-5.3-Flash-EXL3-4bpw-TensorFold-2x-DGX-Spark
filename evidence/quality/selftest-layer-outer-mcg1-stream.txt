@@ -1,0 +1,63 @@
+# upstream bin/selftest_layer_outer.py @cf36287c on CPU, engines/tools/*-evidence mounted from the clone. Same 61 checks pass on cf36287c-mcg1 and cf36287c-mcg1-stream.
+  PASS  L0 all four captures exit 0
+  PASS  L1 layer-outer/resident reproduces the window-outer capture bit-for-bit
+  PASS  L2 layer-outer/stream reproduces it too -- the loader moves nothing
+  PASS  L3 the default schedule is window-outer and naming it changes nothing
+  PASS  L13 both schedules write a measured peak-memory report naming its units
+  PASS  L4 every streamed layer parameter is byte-identical to from_pretrained's
+  PASS  L5 freeing a layer actually returns its parameters to the meta device
+  PASS  L4b a dense checkpoint has nothing for the direct expert fill and the two loader modes agree byte for byte
+  PASS  L6 a fused-expert MoE checkpoint streams byte-exactly (the WeightConverter path)
+  PASS  L6b the direct expert fill is byte-identical to the converter path on every fused expert parameter, and filled every one of them
+  PASS  L6c a checkpoint missing one expert slice is declined by the direct fill (named, with the count) and the converter path refuses it as before
+  PASS  L7 a shard shorter than its own header is REFUSED (holes-read-as-zeros)
+  PASS  L8 a shard-header/index key-set disagreement is REFUSED
+  PASS  L9 a streamed layer whose checkpoint tensors are absent is REFUSED
+  PASS  L10 --schedule layer-outer with --device-map is refused, not silently raced
+  PASS  L11a find_decoder_layers finds the stack whose parent owns embed_tokens
+  PASS  L11b it refuses rather than guessing when no stack matches
+  PASS  L12a the schedule drives a plain in-order stack
+  PASS  L12b a layer that runs more than once per forward is REFUSED
+  PASS  L14a a second cold layer-outer capture agrees with the first
+  PASS  L14b self-compare through layer-outer is exactly 0.0 (hashproof)
+  PASS  L14b self-compare through layer-outer is exactly 0.0 (forcecompute)
+  PASS  L14c schedules compute exact zero while disclosing different capture closures
+  PASS  L15 layer-outer REFUSES a config declaring FP8 over a checkpoint with no scale tensors, naming the silent-FP8 reading
+  PASS  L15b a packed/other quant_method is refused before anything is instantiated
+  PASS  L15c a static activation scheme is refused before anything is instantiated
+  PASS  L16a-dense the fixture quantized the projections and nothing else
+  PASS  L16b-dense dequantize_block_fp8 is bitwise transformers' Fp8Dequantize on every quantized tensor (partial last blocks via the padded reference)
+  PASS  L16c-dense the FP8 checkpoint captures under layer-outer as a quant
+  PASS  L16d-dense ... and its capture_content_digest is bitwise the native capture of the reference-dequantized checkpoint
+  PASS  L16e-dense the runtime receipt records the decode: method, reference, config, and one decoded tensor per quantized key
+  PASS  L16f-dense no scale tensor reached the loader as unexpected
+  PASS  L16a-moe the fixture quantized the projections and nothing else
+  PASS  L16b-moe dequantize_block_fp8 is bitwise transformers' Fp8Dequantize on every quantized tensor (partial last blocks via the padded reference)
+  PASS  L16c-moe the FP8 checkpoint captures under layer-outer as a quant
+  PASS  L16d-moe ... and its capture_content_digest is bitwise the native capture of the reference-dequantized checkpoint
+  PASS  L16e-moe the runtime receipt records the decode: method, reference, config, and one decoded tensor per quantized key
+  PASS  L16f-moe no scale tensor reached the loader as unexpected
+  PASS  L16g an fp8 tensor with no scale beside it is REFUSED by name
+  PASS  L18a a device decode that differs from the host decode by one element is REFUSED naming tensor, block, device and max_abs_diff
+  PASS  L18b ... and a partial-block tensor is checked on EVERY layer, not only the first (parity_all=False still refuses)
+  PASS  L18c a faithful device decode passes, is counted in the receipt block by device and tensor count, and the decoded tensor goes to the sink, not the dict
+  PASS  L18d a host decode records itself as such (no parity to claim)
+  PASS  L18e the sealed FP8 receipt names the decode device and the direct fill: every routed-expert slice came from the decoder, none was staged
+  PASS  L18f a decoded checkpoint missing one expert slice is REFUSED by the fill, naming the slice that was never delivered
+  PASS  L17a a modelopt NVFP4 config over a full-census index plans the nvfp4 decode and nothing else
+  PASS  L17b the sealed contract block carries no private census key and the controller-mirrored key set exactly
+  PASS  L17c a non-NVFP4 modelopt algo, a declared online transform, a module missing weight_scale_2, a non-official non-routed name and a foreign model_type are each REFUSED BY NAME before anything is instantiated
+  PASS  L17d materialize_nvfp4_subset decodes every routed module BITWISE to dequant_nvfp4 under its OFFICIAL name, at the capture dtype
+  PASS  L17e input_scale never reaches the converter; packed components and scales are consumed; bf16 and fp32 non-routed tensors and the plain-bf16 MTP expert pass through untouched and the dtype census records them
+  PASS  L17f weights_decode_evidence names the method, the decode reference, the parity file and the contract block only (no private keys), with the counts
+  PASS  L17g a module missing a scale, a packed tensor outside a routed module, a lone packed weight without scales and an unknown component are each REFUSED BY NAME
+  PASS  L19a a tree with no .gguf plans no GGUF decode (None, before any header is read)
+  PASS  L19b two build directories under one target are REFUSED by name
+  PASS  L19c a build without gguf-files-verified.json is REFUSED (the identity the receipt claims must be hashed, by the fetch stage, before the plan)
+  PASS  L19d the REAL flagship table over a header-only part closes its census and is then REFUSED by the container extent audit (overlapping/truncated bytes read as zeros nowhere)
+  PASS  L19e a config without indexer_types is REFUSED: the glm-dsa census will not guess which indexer tensors are copies
+  PASS  L19f the header-derived decode contract is the controller's mirror: method gguf-dequant-to-bf16, build, 1,809 tensors, the real type census, a 64-hex tensor-table digest and the imatrix KVs
+  PASS  L19g the resident GGUF bucket (embed, head, norm + one layer's router buffer) decodes exactly those four tensors -- 4 GGUF tensors read, not a whole layer
+  PASS  L19h a layer bucket decodes its layer under the official names (kv_b composed, experts sliced) and the bucket's names equal the decode's
+  PASS  L19i a non-slot value in a GGUF bucket is REFUSED
+61 passed, 0 failed

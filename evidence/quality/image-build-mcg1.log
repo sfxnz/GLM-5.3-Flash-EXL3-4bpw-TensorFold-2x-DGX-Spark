@@ -1,0 +1,67 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 3.23kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for nvcr.io/nvidia/pytorch:26.07-py3@sha256:2140e699b3beaf7f96a0081fd9c9406bc3832b435cdb60dfa2d261f7d2f34a1c
+#2 DONE 0.0s
+
+#3 [context suite] load .dockerignore
+#3 transferring suite: 2B done
+#3 DONE 0.0s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 2B done
+#4 DONE 0.0s
+
+#5 [stage-0 1/6] FROM nvcr.io/nvidia/pytorch:26.07-py3@sha256:2140e699b3beaf7f96a0081fd9c9406bc3832b435cdb60dfa2d261f7d2f34a1c
+#5 DONE 0.0s
+
+#6 [internal] load build context
+#6 transferring context: 1.96kB done
+#6 DONE 0.0s
+
+#7 [stage-0 2/6] COPY requirements-capture.txt /tmp/requirements-capture.txt
+#7 CACHED
+
+#8 [context suite] load from client
+#8 ...
+
+#9 [stage-0 3/6] COPY patches/0001-mcg-marker-rank1.patch /tmp/0001-mcg-marker-rank1.patch
+#9 DONE 0.1s
+
+#8 [context suite] load from client
+#8 transferring suite: 138.48MB 0.3s done
+#8 DONE 0.3s
+
+#10 [stage-0 4/6] RUN python3 -m pip install --no-cache-dir --no-deps --require-hashes -r /tmp/requirements-capture.txt  && rm /tmp/requirements-capture.txt  && python3 -c "import torch, transformers, accelerate; assert torch.__version__.startswith('2.13.0a0+9186a08b2c'), torch.__version__; assert transformers.__version__ == '5.16.1'"
+#10 0.579 Collecting transformers @ https://files.pythonhosted.org/packages/0d/4d/ee3728674c0bbc637bb4af88ccf0be697f92e4e90b55f5dc110c44d61b61/transformers-5.16.1-py3-none-any.whl (from -r /tmp/requirements-capture.txt (line 4))
+#10 0.636   Downloading transformers-5.16.1-py3-none-any.whl (12.1 MB)
+#10 0.805      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 12.1/12.1 MB 85.5 MB/s  0:00:00
+#10 0.839 Collecting accelerate @ https://files.pythonhosted.org/packages/a8/db/253133d7e7cb40d3af384bb2f5c0b4a2b7fdcffbc95c688cc67a20a3c103/accelerate-1.14.0-py3-none-any.whl (from -r /tmp/requirements-capture.txt (line 6))
+#10 0.844   Downloading accelerate-1.14.0-py3-none-any.whl (389 kB)
+#10 0.850 Collecting typer @ https://files.pythonhosted.org/packages/dc/bf/205d0004930ede8f542fb58f601526fccf4ae7626075ca1e6c4de5d3d652/typer-0.27.2-py3-none-any.whl (from -r /tmp/requirements-capture.txt (line 8))
+#10 0.853   Downloading typer-0.27.2-py3-none-any.whl (123 kB)
+#10 0.855 Collecting shellingham @ https://files.pythonhosted.org/packages/e0/f9/0595336914c5619e5f28a1fb793285925a8cd4b432c9da0a987836c7f822/shellingham-1.5.4-py2.py3-none-any.whl (from -r /tmp/requirements-capture.txt (line 10))
+#10 0.858   Downloading shellingham-1.5.4-py2.py3-none-any.whl (9.8 kB)
+#10 0.858 Collecting annotated-doc @ https://files.pythonhosted.org/packages/3e/30/e900b21425a860e195f32e37657aa1f7c7f2b1bfb26f03ca209b90933c06/annotated_doc-0.0.5-py3-none-any.whl (from -r /tmp/requirements-capture.txt (line 12))
+#10 0.861   Downloading annotated_doc-0.0.5-py3-none-any.whl (5.3 kB)
+#10 0.865 Installing collected packages: typer, transformers, shellingham, annotated-doc, accelerate
+#10 4.461 
+#10 4.467 Successfully installed accelerate-1.14.0 annotated-doc-0.0.5 shellingham-1.5.4 transformers-5.16.1 typer-0.27.2
+#10 4.467 WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+#10 DONE 6.5s
+
+#11 [stage-0 5/6] RUN --mount=type=bind,from=suite,target=/src     test "$(git -c safe.directory='*' -C /src rev-parse "cf36287c51a18e9361e009ca00a21eb8c0021ab1^{commit}")" = "cf36287c51a18e9361e009ca00a21eb8c0021ab1"  && mkdir -p /opt/fidelity/suite  && { git -c safe.directory='*' -C /src show "cf36287c51a18e9361e009ca00a21eb8c0021ab1:bin/BUNDLE.txt" | grep -v -e '^#' -e '^$';       printf '%s\n' LICENSE bin/fidelity-dataset bin/fidelity-stats bin/fidelity_stats.py         bin/jointstd/__init__.py bin/jointstd/canary.py bin/jointstd/chi2.py bin/jointstd/ngram.py         bin/jointstd/oracle.py bin/jointstd/protocol.py bin/jointstd/stats.py engines/tools/exl3_scope.py; } > /tmp/paths  && git -c safe.directory='*' -C /src archive "cf36287c51a18e9361e009ca00a21eb8c0021ab1" -- $(cat /tmp/paths) | tar -x -C /opt/fidelity/suite  && test "$(find /opt/fidelity/suite -type f | wc -l)" = "$(sort -u /tmp/paths | wc -l)"  && git -C /opt/fidelity/suite apply /tmp/0001-mcg-marker-rank1.patch  && echo "cf36287c51a18e9361e009ca00a21eb8c0021ab1" > /opt/fidelity/suite/COMMIT  && sha256sum /tmp/0001-mcg-marker-rank1.patch | sed 's# /tmp/# #' > /opt/fidelity/suite/PATCHES  && rm /tmp/paths /tmp/0001-mcg-marker-rank1.patch
+#11 DONE 0.4s
+
+#12 [stage-0 6/6] WORKDIR /opt/fidelity/suite
+#12 DONE 0.0s
+
+#13 exporting to image
+#13 exporting layers
+#13 exporting layers 0.7s done
+#13 writing image sha256:8488da2cf66462c1b8406be568dc905c2c1c6f9ae811e676db0e5912b9ee213c done
+#13 naming to docker.io/library/glm53-fidelity:cf36287c-mcg1 done
+#13 DONE 0.7s

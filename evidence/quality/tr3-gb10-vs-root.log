@@ -1,0 +1,14 @@
+MEASUREMENT
+  metric              mean_tokenwise_kld = 0.025558450602750565 nats
+  direction           KL(reference || candidate)
+  top-1 agreement     0.9529457743038593
+  kl                  {"mean": 0.025558450602750565, "median": 0.001505910118648717, "p95": 0.1095623376986692, "p99": 0.3732135681389557, "p99_9": 1.3719741678902098, "max": 8.26501531629556}
+  scored positions    51175 over 25 contexts
+  estimator           full vocabulary, float64, head_policy=shared_reference_head, stack=cross_stack
+  backend             torch:k6_kld_report._token_kld (replay numpy:cpu:float32)
+  comparability       class=advisory same_lane=True usable_as_floor=False
+  disclosure          shared_reference_head (info)
+  disclosure          cross_stack_capture (caveat)
+  disclosure          weights_reconstructed (caveat)
+  receipt             /data/out/compare/comparison-receipt.json
+  tokenwise           tokenwise-kld.npy (409528 bytes, 5c5e77e966e4ddf2)

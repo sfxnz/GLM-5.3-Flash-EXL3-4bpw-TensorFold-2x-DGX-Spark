@@ -1,0 +1,65 @@
+2026-11-04T16:29:49Z
+$ python3 -m unittest discover -s tests -v
+test_equal_units_have_a_zero_width_interval (test_nll.BootstrapTests.test_equal_units_have_a_zero_width_interval) ... ok
+test_fewer_than_five_units_get_no_interval (test_nll.BootstrapTests.test_fewer_than_five_units_get_no_interval) ... ok
+test_interval_matches_the_normal_approximation_on_iid_units (test_nll.BootstrapTests.test_interval_matches_the_normal_approximation_on_iid_units) ... ok
+test_mean_is_per_token_not_per_chunk (test_nll.BootstrapTests.test_mean_is_per_token_not_per_chunk) ... ok
+test_a_changed_source_is_refused_before_any_request (test_nll.NllGateTests.test_a_changed_source_is_refused_before_any_request) ... ok
+test_an_aa_floor_within_half_the_margin_refuses_the_gate (test_nll.NllGateTests.test_an_aa_floor_within_half_the_margin_refuses_the_gate) ... ok
+test_an_existing_capture_is_never_overwritten (test_nll.NllGateTests.test_an_existing_capture_is_never_overwritten) ... ok
+test_boot_to_boot_jitter_gives_near_zero_with_a_ci_around_it (test_nll.NllGateTests.test_boot_to_boot_jitter_gives_near_zero_with_a_ci_around_it) ... ok
+test_capture_sends_each_chunk_once_as_a_scored_text_prompt (test_nll.NllGateTests.test_capture_sends_each_chunk_once_as_a_scored_text_prompt) ... ok
+test_captures_whose_token_ids_differ_are_refused (test_nll.NllGateTests.test_captures_whose_token_ids_differ_are_refused) ... ok
+test_config_worse_than_the_margin_fails (test_nll.NllGateTests.test_config_worse_than_the_margin_fails) ... ok
+test_long_document_reports_position_buckets (test_nll.NllGateTests.test_long_document_reports_position_buckets) ... ok
+test_loss_inside_the_margin_passes (test_nll.NllGateTests.test_loss_inside_the_margin_passes) ... ok
+test_one_category_clearly_worse_fails_even_when_the_average_hides_it (test_nll.NllGateTests.test_one_category_clearly_worse_fails_even_when_the_average_hides_it) ... ok
+test_same_config_twice_pairs_to_exactly_zero_and_passes (test_nll.NllGateTests.test_same_config_twice_pairs_to_exactly_zero_and_passes) ... ok
+test_too_noisy_to_bound_the_loss_is_inconclusive_and_fails (test_nll.NllGateTests.test_too_noisy_to_bound_the_loss_is_inconclusive_and_fails) ... ok
+test_reads_tensorfolds_rows_with_the_prompt_token_first (test_nll.PromptRowsTests.test_reads_tensorfolds_rows_with_the_prompt_token_first) ... ok
+test_rows_that_do_not_cover_the_prompt_are_rejected (test_nll.PromptRowsTests.test_rows_that_do_not_cover_the_prompt_are_rejected) ... ok
+test_the_pinned_corpus_captures_whole_and_pairs_with_itself (test_nll.RealCorpusTests.test_the_pinned_corpus_captures_whole_and_pairs_with_itself) ... ok
+test_no_health_in_time_prints_both_logs_and_stops_ours (test_run_sh.RealStart.test_no_health_in_time_prints_both_logs_and_stops_ours) ... ok
+test_starts_rank1_then_rank0_with_the_planned_argvs (test_run_sh.RealStart.test_starts_rank1_then_rank0_with_the_planned_argvs) ... ok
+test_engine_pins_match_the_dockerfile (test_run_sh.Static.test_engine_pins_match_the_dockerfile) ... ok
+test_shellcheck_is_clean (test_run_sh.Static.test_shellcheck_is_clean) ... ok
+test_nothing_running_is_a_quiet_success (test_run_sh.Stop.test_nothing_running_is_a_quiet_success) ... ok
+test_only_labelled_containers_are_asked_for (test_run_sh.Stop.test_only_labelled_containers_are_asked_for) ... ok
+test_stops_rank0_then_rank1_and_removes_both (test_run_sh.Stop.test_stops_rank0_then_rank1_and_removes_both) ... ok
+test_argv_carries_the_label_names_mount_and_pins_from_recipe_conf (test_run_sh.ValidateOnly.test_argv_carries_the_label_names_mount_and_pins_from_recipe_conf) ... ok
+test_busy_nccl_port_is_refused (test_run_sh.ValidateOnly.test_busy_nccl_port_is_refused) ... ok
+test_clean_pair_passes_and_both_ranks_get_one_argv (test_run_sh.ValidateOnly.test_clean_pair_passes_and_both_ranks_get_one_argv) ... ok
+test_differing_worker_image_plans_a_copy (test_run_sh.ValidateOnly.test_differing_worker_image_plans_a_copy) ... ok
+test_environment_overrides_reach_both_ranks (test_run_sh.ValidateOnly.test_environment_overrides_reach_both_ranks) ... ok
+test_explicit_ip_that_is_not_on_the_interface_is_refused (test_run_sh.ValidateOnly.test_explicit_ip_that_is_not_on_the_interface_is_refused) ... ok
+test_foreign_gpu_container_is_refused_and_never_touched (test_run_sh.ValidateOnly.test_foreign_gpu_container_is_refused_and_never_touched) ... ok
+test_healthy_pair_of_ours_exits_zero_without_restarting (test_run_sh.ValidateOnly.test_healthy_pair_of_ours_exits_zero_without_restarting) ... ok
+test_image_with_another_archive_is_rebuilt (test_run_sh.ValidateOnly.test_image_with_another_archive_is_rebuilt) ... ok
+test_inactive_hca_and_down_link_are_refused (test_run_sh.ValidateOnly.test_inactive_hca_and_down_link_are_refused) ... ok
+test_leftover_rank_of_ours_is_cleared_before_a_fresh_start (test_run_sh.ValidateOnly.test_leftover_rank_of_ours_is_cleared_before_a_fresh_start) ... ok
+test_memory_gate_refuses_and_force_overrides (test_run_sh.ValidateOnly.test_memory_gate_refuses_and_force_overrides) ... ok
+test_missing_worker_snapshot_plans_an_rsync_over_the_direct_link (test_run_sh.ValidateOnly.test_missing_worker_snapshot_plans_an_rsync_over_the_direct_link) ... ok
+test_real_run_refuses_a_foreign_gpu_container_before_any_write (test_run_sh.ValidateOnly.test_real_run_refuses_a_foreign_gpu_container_before_any_write) ... ok
+test_short_head_snapshot_plans_a_download_with_one_include_per_pattern (test_run_sh.ValidateOnly.test_short_head_snapshot_plans_a_download_with_one_include_per_pattern) ... ok
+test_unpinned_pack_is_refused (test_run_sh.ValidateOnly.test_unpinned_pack_is_refused) ... ok
+test_concurrent_check_sends_parallel_requests (test_smoke.SmokeTests.test_concurrent_check_sends_parallel_requests) ... ok
+test_dead_server_fails_without_crashing (test_smoke.SmokeTests.test_dead_server_fails_without_crashing) ... ok
+test_healthy_server_passes_every_check (test_smoke.SmokeTests.test_healthy_server_passes_every_check) ... ok
+test_no_accepted_drafts_fails (test_smoke.SmokeTests.test_no_accepted_drafts_fails) ... ok
+test_png_has_red_square_left_and_blue_circle_right (test_smoke.SmokeTests.test_png_has_red_square_left_and_blue_circle_right) ... ok
+test_swapped_shapes_fail_vision (test_smoke.SmokeTests.test_swapped_shapes_fail_vision) ... ok
+test_think_tags_in_thinking_off_content_fail (test_smoke.SmokeTests.test_think_tags_in_thinking_off_content_fail) ... ok
+test_vision_answer_inside_a_code_fence_passes (test_smoke.SmokeTests.test_vision_answer_inside_a_code_fence_passes) ... ok
+test_wrong_window_fails_models (test_smoke.SmokeTests.test_wrong_window_fails_models) ... ok
+test_failed_streams_are_counted_not_hidden (test_tools.BenchTests.test_failed_streams_are_counted_not_hidden) ... ok
+test_records_raw_streams_and_medians (test_tools.BenchTests.test_records_raw_streams_and_medians) ... ok
+test_context_length_refusal_rescales_and_retries (test_tools.NeedleTests.test_context_length_refusal_rescales_and_retries) ... ok
+test_finds_the_code_inside_the_window (test_tools.NeedleTests.test_finds_the_code_inside_the_window) ... ok
+test_target_past_the_window_is_cut_to_fit (test_tools.NeedleTests.test_target_past_the_window_is_cut_to_fit) ... ok
+test_reads_the_values_bash_reads_and_the_environment_wins (test_tools.RecipeSettingsTests.test_reads_the_values_bash_reads_and_the_environment_wins) ... ok
+
+----------------------------------------------------------------------
+Ran 57 tests in 30.467s
+
+OK
+rc=0

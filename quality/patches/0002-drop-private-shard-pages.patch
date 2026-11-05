@@ -1,0 +1,49 @@
+diff --git a/engines/tools/layer_outer.py b/engines/tools/layer_outer.py
+index e107948..1965f5d 100644
+--- a/engines/tools/layer_outer.py
++++ b/engines/tools/layer_outer.py
+@@ -2636,6 +2636,36 @@ def _read_exact(path: str, offset: int, into) -> None:
+         os.close(fd)
+ 
+ 
++def _drop_private_pages(paths: Iterable[str]) -> None:
++    """Discard the private pages of this process's mappings of `paths`.
++
++    safetensors maps each shard MAP_PRIVATE. On a coherent-memory GPU (GB10,
++    sm_121) a device copy straight out of that mapping faults its pages in
++    for write, so every byte read becomes an anonymous copy that lives as
++    long as the mapping, i.e. the whole run: ~3.7 GB per TR3 layer, never
++    evictable. Nothing here writes a checkpoint, so MADV_DONTNEED loses no
++    data; the next read refaults the file's own bytes.
++    """
++    import ctypes
++
++    wanted = {os.path.realpath(path) for path in paths}
++    try:
++        maps = open("/proc/self/maps", "r", encoding="utf-8")
++    except OSError:  # pragma: no cover - non-Linux hosts
++        return
++    with maps:
++        ranges = [line.split(None, 5) for line in maps]
++    libc = ctypes.CDLL(None, use_errno=True)
++    libc.madvise.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
++    for fields in ranges:
++        if len(fields) == 6 and fields[1].endswith("p") and fields[5].rstrip("\n") in wanted:
++            start, stop = (int(value, 16) for value in fields[0].split("-"))
++            if libc.madvise(start, stop - start, 4) != 0:  # MADV_DONTNEED
++                errno = ctypes.get_errno()
++                raise OSError(errno, "madvise(MADV_DONTNEED) on %s: %s"
++                              % (fields[5].rstrip("\n"), os.strerror(errno)))
++
++
+ class _ExpertFill(object):
+     """One layer's fused expert parameters, allocated once and filled slice by slice.
+ 
+@@ -3664,6 +3694,7 @@ def build_streamed_model(model_dir: str, cls, config, dtype_name: str, device: s
+         gc.collect()
+         if torch.cuda.is_available():
+             torch.cuda.empty_cache()
++        _drop_private_pages(os.path.join(model_dir, name) for name in opened_shards)
+ 
+     streamer = StreamedModel(model, layers_prefix, layers, layer_param_names,
+                              do_load, do_free, aggregate)

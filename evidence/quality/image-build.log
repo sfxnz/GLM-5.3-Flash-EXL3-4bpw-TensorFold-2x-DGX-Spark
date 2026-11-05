@@ -1,0 +1,49 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 DONE 0.0s
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 2.79kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for nvcr.io/nvidia/pytorch:26.07-py3@sha256:2140e699b3beaf7f96a0081fd9c9406bc3832b435cdb60dfa2d261f7d2f34a1c
+#2 DONE 0.0s
+
+#3 [context suite] load .dockerignore
+#3 transferring suite: 2B done
+#3 DONE 0.0s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 2B done
+#4 DONE 0.0s
+
+#5 [stage-0 1/5] FROM nvcr.io/nvidia/pytorch:26.07-py3@sha256:2140e699b3beaf7f96a0081fd9c9406bc3832b435cdb60dfa2d261f7d2f34a1c
+#5 DONE 0.0s
+
+#6 [internal] load build context
+#6 transferring context: 46B done
+#6 DONE 0.0s
+
+#7 [stage-0 2/5] COPY requirements-capture.txt /tmp/requirements-capture.txt
+#7 CACHED
+
+#8 [stage-0 3/5] RUN python3 -m pip install --no-cache-dir --no-deps --require-hashes -r /tmp/requirements-capture.txt  && rm /tmp/requirements-capture.txt  && python3 -c "import torch, transformers, accelerate; assert torch.__version__.startswith('2.13.0a0+9186a08b2c'), torch.__version__; assert transformers.__version__ == '5.16.1'"
+#8 CACHED
+
+#9 [context suite] load from client
+#9 transferring suite: 116.28MB 0.3s done
+#9 DONE 0.3s
+
+#10 [stage-0 4/5] RUN --mount=type=bind,from=suite,target=/src     test "$(git -c safe.directory='*' -C /src rev-parse "cf36287c51a18e9361e009ca00a21eb8c0021ab1^{commit}")" = "cf36287c51a18e9361e009ca00a21eb8c0021ab1"  && mkdir -p /opt/fidelity/suite  && { git -c safe.directory='*' -C /src show "cf36287c51a18e9361e009ca00a21eb8c0021ab1:bin/BUNDLE.txt" | grep -v -e '^#' -e '^$';       printf '%s\n' LICENSE bin/fidelity-dataset bin/fidelity-stats bin/fidelity_stats.py         bin/jointstd/__init__.py bin/jointstd/canary.py bin/jointstd/chi2.py bin/jointstd/ngram.py         bin/jointstd/oracle.py bin/jointstd/protocol.py bin/jointstd/stats.py engines/tools/exl3_scope.py; } > /tmp/paths  && git -c safe.directory='*' -C /src archive "cf36287c51a18e9361e009ca00a21eb8c0021ab1" -- $(cat /tmp/paths) | tar -x -C /opt/fidelity/suite  && test "$(find /opt/fidelity/suite -type f | wc -l)" = "$(sort -u /tmp/paths | wc -l)"  && echo "cf36287c51a18e9361e009ca00a21eb8c0021ab1" > /opt/fidelity/suite/COMMIT && rm /tmp/paths
+#10 DONE 0.4s
+
+#11 [stage-0 5/5] WORKDIR /opt/fidelity/suite
+#11 DONE 0.0s
+
+#12 exporting to image
+#12 exporting layers
+#12 exporting layers 0.7s done
+#12 writing image sha256:433730939b655cd608a9b1e0fec66104af7002677b61e274f3eede16172af874 done
+#12 naming to docker.io/library/glm53-fidelity:cf36287c done
+#12 DONE 0.7s

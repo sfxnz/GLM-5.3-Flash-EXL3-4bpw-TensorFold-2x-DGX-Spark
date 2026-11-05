@@ -1,0 +1,7 @@
+# Routed experts at 4 bpw, every other budgeted linear unquantized (16). Entries resolve top to
+# bottom and the last match wins (exllamav3 conversion/allocation.py). MTP is outside the recipe and
+# takes -mb; the vision tower is not built with -vb 16.
+target_bpw: 4.0
+tensors:
+  "*": 16
+  "model.language_model.layers.*.mlp.experts.*": 4

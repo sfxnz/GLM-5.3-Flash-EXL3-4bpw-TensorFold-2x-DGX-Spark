@@ -1,0 +1,14 @@
+# python3 -I quant/check_layout.py /home/sfxnz/projects/data/glm53-exl3/assemble-partial/pack hf:zai-org/GLM-5.3-Flash-BF16@f9fed3bbc82291073373d67452e9f25317ef7577 --cache <scratch>/hdrcache --layers 0,1,2,3,4
+# 2026-11-04T15:33:50Z on spark1; source shard headers from the cache (fetched earlier by HTTP range requests)
+candidate /home/sfxnz/projects/data/glm53-exl3/assemble-partial/pack
+source    hf:zai-org/GLM-5.3-Flash-BF16@f9fed3bbc82291073373d67452e9f25317ef7577
+routed experts: layers 3..4 x 288 experts x 3 projections
+partial check, --layers [0, 1, 2, 3, 4]: other layers' tensors are ignored in both packs
+mcg markers read: 1728
+non-expert tensors: 483 in candidate, 483 in source, dtypes {'BF16': 453, 'F32': 30}
+candidate tensors total: 7489
+gate/up suh sharing per layer over all 288 experts (TF shx: one input rotation per layer):
+  layer 3: 576 distinct gate/up suh -> shx=false
+  layer 4: 576 distinct gate/up suh -> shx=false
+RESULT PASS
+exit 0

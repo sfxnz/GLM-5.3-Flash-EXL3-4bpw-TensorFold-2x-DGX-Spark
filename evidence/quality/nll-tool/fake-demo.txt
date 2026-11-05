@@ -1,0 +1,49 @@
+Fake TensorFold on the real nll-corpus-v1; the fake's tokens are words, so token counts are not GLM's.
+$ nll.py capture --label a   fake knobs {}, rc=0
+{"event": "captured", "label": "a", "out": "a/capture.json", "chunks": 41, "prompt_tokens": 104425, "wall_s": 0.4}
+$ nll.py capture --label a2   fake knobs {'jitter': 0.0001}, rc=0
+{"event": "captured", "label": "a2", "out": "a2/capture.json", "chunks": 41, "prompt_tokens": 104425, "wall_s": 1.2}
+$ nll.py capture --label b   fake knobs {'nll_shift': 0.001, 'jitter': 0.05}, rc=0
+{"event": "captured", "label": "b", "out": "b/capture.json", "chunks": 41, "prompt_tokens": 104425, "wall_s": 1.2}
+
+$ nll.py compare a a2 --json aa.json   rc=0, 0.3 s
+a -> a2: NLL B - A in nats/token, 95% bootstrap CI (10000 resamples)
+group              units   tokens    NLL A    NLL B      B - A                    CI95   top1=   same
+all                   41   104384   4.0592   4.0592   +0.00000    [-0.00000, +0.00000]  1.0000  0.000
+prose                 12    32649   4.0839   4.0839   +0.00000    [-0.00000, +0.00000]  1.0000  0.000
+multilingual          11    15750   4.0251   4.0251   +0.00000    [-0.00000, +0.00000]  1.0000  0.000
+code                  12    21328   4.0509   4.0509   -0.00000    [-0.00000, +0.00000]  1.0000  0.000
+math                   5    11274   4.0854   4.0854   +0.00000    [-0.00000, +0.00000]  1.0000  0.000
+long                   1    23383   4.0427   4.0427   +0.00000         (n/a, <5 units)  1.0000  0.000
+long@0-4096            8     4096   4.0285   4.0285   +0.00000    [-0.00000, +0.00000]  1.0000  0.000
+long@4096-16384       24    12288   4.0553   4.0553   +0.00000    [-0.00000, +0.00000]  1.0000  0.000
+long@16384-end        14     6999   4.0289   4.0289   -0.00000    [-0.00000, +0.00000]  1.0000  0.000
+margin 0.002 nats/token, A/A floor not checked (pass --aa): pass
+
+$ nll.py compare a b --aa aa.json   rc=0, 0.3 s
+a -> b: NLL B - A in nats/token, 95% bootstrap CI (10000 resamples)
+group              units   tokens    NLL A    NLL B      B - A                    CI95   top1=   same
+all                   41   104384   4.0592   4.0600   +0.00077    [+0.00055, +0.00092]  1.0000  0.000
+prose                 12    32649   4.0839   4.0847   +0.00074    [+0.00054, +0.00092]  1.0000  0.000
+multilingual          11    15750   4.0251   4.0256   +0.00050    [+0.00023, +0.00080]  1.0000  0.000
+code                  12    21328   4.0509   4.0514   +0.00054    [+0.00021, +0.00093]  1.0000  0.000
+math                   5    11274   4.0854   4.0864   +0.00098    [+0.00057, +0.00147]  1.0000  0.000
+long                   1    23383   4.0427   4.0438   +0.00110         (n/a, <5 units)  1.0000  0.000
+long@0-4096            8     4096   4.0285   4.0298   +0.00134    [+0.00055, +0.00205]  1.0000  0.000
+long@4096-16384       24    12288   4.0553   4.0565   +0.00121    [+0.00061, +0.00175]  1.0000  0.000
+long@16384-end        14     6999   4.0289   4.0296   +0.00076    [+0.00025, +0.00128]  1.0000  0.000
+margin 0.002 nats/token, A/A floor 3.66e-07: pass
+
+$ nll.py compare a b --margin 0.0008   rc=1, 0.3 s
+a -> b: NLL B - A in nats/token, 95% bootstrap CI (10000 resamples)
+group              units   tokens    NLL A    NLL B      B - A                    CI95   top1=   same
+all                   41   104384   4.0592   4.0600   +0.00077    [+0.00055, +0.00092]  1.0000  0.000
+prose                 12    32649   4.0839   4.0847   +0.00074    [+0.00054, +0.00092]  1.0000  0.000
+multilingual          11    15750   4.0251   4.0256   +0.00050    [+0.00023, +0.00080]  1.0000  0.000
+code                  12    21328   4.0509   4.0514   +0.00054    [+0.00021, +0.00093]  1.0000  0.000
+math                   5    11274   4.0854   4.0864   +0.00098    [+0.00057, +0.00147]  1.0000  0.000
+long                   1    23383   4.0427   4.0438   +0.00110         (n/a, <5 units)  1.0000  0.000
+long@0-4096            8     4096   4.0285   4.0298   +0.00134    [+0.00055, +0.00205]  1.0000  0.000
+long@4096-16384       24    12288   4.0553   4.0565   +0.00121    [+0.00061, +0.00175]  1.0000  0.000
+long@16384-end        14     6999   4.0289   4.0296   +0.00076    [+0.00025, +0.00128]  1.0000  0.000
+margin 0.0008 nats/token, A/A floor not checked (pass --aa): inconclusive

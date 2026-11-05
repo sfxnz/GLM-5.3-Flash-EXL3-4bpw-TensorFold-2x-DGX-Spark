@@ -1,0 +1,19 @@
+$ quality/compare.sh tr3-h200   # spark1, CPUS=8 (default), 2026-11-04; exit 2 = advisory (cross_stack: source_files differ)
+MEASUREMENT
+  metric              mean_tokenwise_kld = 0.022802369974100106 nats
+  direction           KL(reference || candidate)
+  top-1 agreement     0.9546458231558378
+  kl                  {"mean": 0.022802369974100106, "median": 0.0014641740471952117, "p95": 0.09523787647327922, "p99": 0.3330055874206744, "p99_9": 1.3013990873279129, "max": 8.707023935012595}
+  scored positions    51175 over 25 contexts
+  estimator           full vocabulary, float64, head_policy=shared_reference_head, stack=cross_stack
+  backend             torch:k6_kld_report._token_kld (replay numpy:cpu:float32)
+  comparability       class=advisory same_lane=True usable_as_floor=False
+  disclosure          shared_reference_head (info)
+  disclosure          cross_stack_capture (caveat)
+  disclosure          weights_reconstructed (caveat)
+  receipt             /data/out/compare/comparison-receipt.json
+  tokenwise           tokenwise-kld.npy (409528 bytes, c1e023161aa68892)
+
+real	3m42.809s
+user	0m0.017s
+sys	0m0.011s

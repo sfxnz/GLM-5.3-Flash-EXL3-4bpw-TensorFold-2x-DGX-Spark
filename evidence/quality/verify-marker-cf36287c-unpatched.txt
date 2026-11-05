@@ -1,0 +1,7 @@
+suite cf36287c51a18e9361e009ca00a21eb8c0021ab1 patches none
+[FAIL] real pack: trellis_checkpoint_plan admits the sidecar declaration - REFUSED: tensor_storage model.language_model.layers.10.mlp.experts.0.down_proj codebook marker must be scalar I32
+[ok] synthetic: I32 marker shape [] admitted and decoded
+[FAIL] synthetic: I32 marker shape [1] admitted and decoded - REFUSED: tensor_storage model.language_model.layers.0.mlp.experts.0.down_proj codebook marker must be scalar I32
+[ok] synthetic: marker shape [2] refused - REFUSED: tensor_storage model.language_model.layers.0.mlp.experts.0.down_proj codebook marker must be scalar I32
+[ok] synthetic: marker dtype I64 refused - REFUSED: tensor_storage model.language_model.layers.0.mlp.experts.0.down_proj codebook marker must be scalar I32
+verify_marker: FAIL: real pack: trellis_checkpoint_plan admits the sidecar declaration; synthetic: I32 marker shape [1] admitted and decoded
