@@ -23,14 +23,22 @@ def default_url():
     return f"http://127.0.0.1:{setting('PORT')}"
 
 
+def headers():
+    """The JSON content type, and the key from API_KEY in both header forms the server reads, when it is set."""
+    h = {"content-type": "application/json"}
+    if os.environ.get("API_KEY"):
+        h.update({"authorization": f"Bearer {os.environ['API_KEY']}", "x-api-key": os.environ["API_KEY"]})
+    return h
+
+
 def get(url, timeout=30):
-    with urllib.request.urlopen(url, timeout=timeout) as r:
+    with urllib.request.urlopen(urllib.request.Request(url, headers=headers()), timeout=timeout) as r:
         return r.status, json.load(r)
 
 
 def post(url, body, timeout=900):
     """Returns (status, parsed JSON body); an HTTP error answers with its status and error body instead of raising."""
-    req = urllib.request.Request(url, json.dumps(body).encode(), {"content-type": "application/json"})
+    req = urllib.request.Request(url, json.dumps(body).encode(), headers())
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return r.status, json.load(r)
@@ -44,7 +52,7 @@ def post(url, body, timeout=900):
 
 def stream(url, body, timeout=900):
     """Yields (seconds since the request, chunk) for each SSE data chunk of a streamed reply."""
-    req = urllib.request.Request(url, json.dumps({**body, "stream": True}).encode(), {"content-type": "application/json"})
+    req = urllib.request.Request(url, json.dumps({**body, "stream": True}).encode(), headers())
     t0 = time.monotonic()
     with urllib.request.urlopen(req, timeout=timeout) as r:
         for line in r:

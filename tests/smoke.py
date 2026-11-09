@@ -5,11 +5,14 @@ python3 tests/smoke.py [--url http://127.0.0.1:8000] [--out evidence/run/smoke.j
 import argparse
 import base64
 import json
+import os
 import re
 import struct
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 import zlib
 from pathlib import Path
 
@@ -17,6 +20,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
 import recipe  # noqa: E402
 
 QUESTION = "What is 17 * 23? Reply with the number only."
+WEATHER = "Look up the weather in Paris, France in celsius. Use the tool."
+SCHEMA = {"type": "object", "required": ["city", "unit"],
+          "properties": {"city": {"type": "string"}, "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}}}
 PROSE = [
     "Write a detailed paragraph about the history of the printing press.",
     "Explain how a CPU pipeline handles a branch misprediction.",
@@ -121,11 +127,60 @@ class Smoke:
         [t.join() for t in threads]
         return all(o and o["status"] == 200 and o["chars"] > 0 for o in out), {"requests": out}
 
-    CHECKS = ["health", "models", "thinking_on", "thinking_off", "vision", "speculative", "concurrent"]
+    def tool_stream(self):
+        body = {"model": self.model, "messages": [{"role": "user", "content": WEATHER}], "max_tokens": 200,
+                "temperature": 0, "tool_choice": "required", "chat_template_kwargs": {"enable_thinking": False},
+                "tools": [{"type": "function", "function": {"name": "get_weather", "description": "Current weather for a city",
+                                                            "parameters": SCHEMA}}]}
+        pieces, names = [], []
+        for _, chunk in recipe.stream(self.chat_url, body):
+            for c in chunk.get("choices", []):
+                for call in (c.get("delta") or {}).get("tool_calls") or []:
+                    fn = call.get("function") or {}
+                    names += [fn["name"]] if fn.get("name") else []
+                    pieces += [fn["arguments"]] if fn.get("arguments") else []
+        status, d = recipe.post(self.chat_url, body)
+        calls = d.get("choices", [{}])[0].get("message", {}).get("tool_calls") or [] if status == 200 else []
+        final = calls[0]["function"]["arguments"] if calls else None
+        ok = names == ["get_weather"] and len(pieces) >= 2 and "".join(pieces) == final and set(json.loads(final)) == {"city", "unit"}
+        return ok, {"names": names, "pieces": pieces, "final": final}
+
+    def messages(self):
+        status, d = recipe.post(self.url + "/v1/messages", {"model": self.model, "max_tokens": 64,
+                                                           "messages": [{"role": "user", "content": QUESTION}]})
+        text = "".join(b.get("text", "") for b in d.get("content", []) if b.get("type") == "text") if status == 200 else ""
+        return status == 200 and "391" in text and d.get("stop_reason") == "end_turn", {"status": status, "raw": d}
+
+    def messages_stream(self):
+        body = {"model": self.model, "max_tokens": 200, "temperature": 0, "tool_choice": {"type": "any"},
+                "messages": [{"role": "user", "content": WEATHER}],
+                "tools": [{"name": "get_weather", "description": "Current weather for a city", "input_schema": SCHEMA}]}
+        events = [e for _, e in recipe.stream(self.url + "/v1/messages", body)]
+        kinds = [e.get("type") for e in events]
+        starts = [e["content_block"] for e in events if e.get("type") == "content_block_start"]
+        pieces = [e["delta"]["partial_json"] for e in events if (e.get("delta") or {}).get("type") == "input_json_delta"]
+        try:
+            args = json.loads("".join(pieces))
+        except ValueError:
+            args = None
+        ok = (kinds[:1] == ["message_start"] and kinds[-1:] == ["message_stop"] and len(pieces) >= 2
+              and [b.get("type") for b in starts] == ["tool_use"] and isinstance(args, dict) and set(args) == {"city", "unit"})
+        return ok, {"events": kinds, "pieces": pieces}
+
+    def auth(self):
+        try:
+            with urllib.request.urlopen(self.url + "/v1/models", timeout=30) as r:  # no key headers
+                status = r.status
+        except urllib.error.HTTPError as e:
+            status = e.code
+        return status == 401, {"status_without_key": status}
+
+    CHECKS = ["health", "models", "thinking_on", "thinking_off", "vision", "speculative", "concurrent", "tool_stream",
+              "messages", "messages_stream"]
 
     def run(self):
         results = {}
-        for name in self.CHECKS:
+        for name in self.CHECKS + (["auth"] if os.environ.get("API_KEY") else []):
             try:
                 ok, detail = getattr(self, name)()
             except Exception as e:  # a dead server or a malformed reply fails the check, not the run

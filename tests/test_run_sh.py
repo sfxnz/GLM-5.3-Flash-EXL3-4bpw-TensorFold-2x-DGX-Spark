@@ -222,6 +222,26 @@ class ValidateOnly(unittest.TestCase):
         strip = lambda argv, r: [w for w in argv if w not in (f"tf-glm53-rank{r}", f"TF_GLM_RANK={r}")]
         self.assertEqual(strip(a[0], 0), strip(a[1], 1))
 
+    def test_api_key_file_is_mounted_and_passed_to_both_ranks(self):
+        rc, out = self.pair.run()
+        self.assertTrue(all("--api-key-file" not in argv for argv in argvs(out).values()))
+        with tempfile.TemporaryDirectory() as d:
+            key = Path(d) / "server.keys"
+            key.write_text("agents: sk-local-1\n")
+            key.chmod(0o600)
+            rc, out = self.pair.run(API_KEY_FILE=str(key))
+            self.assertEqual(rc, 0, out)
+            for argv in argvs(out).values():
+                self.assertEqual(flag(argv, "--api-key-file"), str(key))
+                self.assertIn(f"{key}:{key}:ro", argv)
+            key.chmod(0o644)
+            rc, out = self.pair.run(API_KEY_FILE=str(key))
+            self.assertNotEqual(rc, 0)
+            self.assertIn(f"API_KEY_FILE {key} must be mode 600", out)
+            rc, out = self.pair.run(API_KEY_FILE=f"{d}/missing.keys")
+            self.assertNotEqual(rc, 0)
+            self.assertIn(f"API_KEY_FILE {d}/missing.keys is missing", out)
+
     def test_bad_serving_knobs_are_refused(self):
         for k, v, msg in (("INDEX_CUDA", "yes", "INDEX_CUDA=yes must be 0 or 1"),
                           ("VIDEO_TOKENS", "32", "VIDEO_TOKENS=32 must be 64 to 262144"),

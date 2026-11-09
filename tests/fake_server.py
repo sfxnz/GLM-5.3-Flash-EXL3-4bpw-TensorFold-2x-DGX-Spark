@@ -9,6 +9,10 @@ streamed tool calls, to the first two tools, the name in the first piece and the
 prefix_cache adds usage.prompt_tokens_details.cached_tokens, the longest prefix shared with any earlier prompt;
 prefill_s_per_ktok sleeps that long per uncached thousand prompt tokens before replying. crosstalk answers each vault
 question with the code from the vault request before it, as a server that mixed up concurrent requests would.
+A get_weather tool gets {"city": "Paris, France", "unit": "celsius"}; whole_tool_args streams each call's arguments in
+one piece, and drift_tool_args makes the non-streamed arguments differ from the streamed ones. /v1/messages answers in
+the Anthropic shape (as v1.2.5's, tool_use streamed as input_json_delta pieces) from the same replies. api_key makes
+every route but /health answer 401 without that key in Authorization: Bearer or x-api-key.
 
 /v1/completions answers prompt_logprobs as v1.2.2 does (zig/src/server/logprobs.zig promptValue): null for the first
 prompt token, then {id: {logprob, rank, decoded_token}} with the prompt token first. Its tokens are words; nll_shift
@@ -36,10 +40,11 @@ GOOD_VISION = '{"left": {"color": "red", "shape": "square"}, "right": {"color": 
 class FakeServer:
     def __init__(self, model="glm-5.3-flash", window=int(recipe.setting("CONTEXT")), leak_think=False, accepted=5, vision=GOOD_VISION,
                  reported_window=None, nll_shift=0.0, jitter=0.0, id_salt="", prefix_cache=False,
-                 prefill_s_per_ktok=0.0, crosstalk=False):
+                 prefill_s_per_ktok=0.0, crosstalk=False, whole_tool_args=False, drift_tool_args=False, api_key=None):
         self.model, self.window, self.leak_think, self.accepted, self.vision = model, window, leak_think, accepted, vision
         self.nll_shift, self.jitter, self.id_salt = nll_shift, jitter, id_salt
         self.prefix_cache, self.prefill_s_per_ktok, self.crosstalk = prefix_cache, prefill_s_per_ktok, crosstalk
+        self.whole_tool_args, self.drift_tool_args, self.api_key = whole_tool_args, drift_tool_args, api_key
         self.reported_window = reported_window or window
         self.requests, self.prompts, self.last_code, self.lock = [], [], None, threading.Lock()
         fake = self
@@ -56,7 +61,23 @@ class FakeServer:
                 self.end_headers()
                 self.wfile.write(raw)
 
+            def refused(self):
+                keys = {self.headers.get("x-api-key"), (self.headers.get("authorization") or "").removeprefix("Bearer ")}
+                if self.path == "/health" or fake.api_key is None or fake.api_key in keys:
+                    return False
+                self.send(401, {"error": {"message": "invalid API key"}})
+                return True
+
+            def sse(self, events):
+                self.send_response(200)
+                self.send_header("content-type", "text/event-stream")
+                self.end_headers()
+                for e in events:
+                    self.wfile.write(b"data: " + json.dumps(e).encode() + b"\n\n")
+
             def do_GET(self):
+                if self.refused():
+                    return
                 if self.path == "/health":
                     self.send(200, {"status": "ok", "model": fake.model, "max_batch_size": int(recipe.setting("PARALLEL"))})
                 elif self.path == "/v1/models":
@@ -69,6 +90,13 @@ class FakeServer:
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers["content-length"])))
                 fake.requests.append(body)
+                if self.refused():
+                    return
+                if self.path == "/v1/messages":
+                    status, reply = fake.message(body)
+                    if status != 200 or not body.get("stream"):
+                        return self.send(status, reply)
+                    return self.sse(fake.message_events(reply))
                 if self.path == "/v1/completions":
                     return self.send(*fake.complete(body))
                 if "prompt_logprobs" in body:
@@ -89,7 +117,7 @@ class FakeServer:
                     fn = call["function"]
                     chunk({"tool_calls": [{"index": i, "id": call["id"], "type": "function",
                                            "function": {"name": fn["name"], "arguments": ""}}]})
-                    for j in range(0, len(fn["arguments"]), 5):
+                    for j in range(0, len(fn["arguments"]), len(fn["arguments"]) if fake.whole_tool_args else 5):
                         chunk({"tool_calls": [{"index": i, "function": {"arguments": fn["arguments"][j:j + 5]}}]})
                 content = message["content"] or ""
                 for i in range(0, len(content), 8):
@@ -144,8 +172,10 @@ class FakeServer:
             content = "391"
         elif body.get("tools") and last["role"] == "user":
             content = ""
-            calls = [{"id": f"call_{i}", "type": "function",
-                      "function": {"name": t["function"]["name"], "arguments": json.dumps({"path": f"src/mod_{i}.py"})}}
+            weather = {"city": "Paris, France", "unit": "fahrenheit" if self.drift_tool_args and not body.get("stream")
+                       else "celsius"}
+            calls = [{"id": f"call_{i}", "type": "function", "function": {"name": t["function"]["name"], "arguments": json.dumps(
+                weather if t["function"]["name"] == "get_weather" else {"path": f"src/mod_{i}.py"})}}
                      for i, t in enumerate(body["tools"][:2])]
         else:
             content = "The printing press changed how ideas travel. " * 6
@@ -165,6 +195,40 @@ class FakeServer:
                      "usage": usage,
                      "speculative": {"rounds": 4, "drafted": 8, "accepted": self.accepted,
                                      "acceptance_rate": self.accepted / 8, "tokens_per_round": 2.0}}
+
+    def message(self, body):
+        """An Anthropic Messages reply, from the chat reply to the same conversation and tools."""
+        chat = {"messages": body["messages"], "max_tokens": body.get("max_tokens", 256), "stream": body.get("stream"),
+                "chat_template_kwargs": {"enable_thinking": False},
+                "tools": [{"type": "function", "function": {"name": t["name"], "parameters": t["input_schema"]}}
+                          for t in body.get("tools", [])]}
+        status, reply = self.reply(chat)
+        if status != 200:
+            return status, {"type": "error", "error": {"type": "invalid_request_error", "message": reply["error"]["message"]}}
+        msg = reply["choices"][0]["message"]
+        blocks = [{"type": "tool_use", "id": c["id"], "name": c["function"]["name"], "input": json.loads(c["function"]["arguments"])}
+                  for c in msg.get("tool_calls") or []] or [{"type": "text", "text": msg["content"]}]
+        return 200, {"id": "msg_fake", "type": "message", "role": "assistant", "model": self.model, "content": blocks,
+                     "stop_reason": "tool_use" if msg.get("tool_calls") else "end_turn", "stop_sequence": None,
+                     "usage": {"input_tokens": reply["usage"]["prompt_tokens"],
+                               "output_tokens": reply["usage"]["completion_tokens"]}}
+
+    def message_events(self, reply):
+        yield {"type": "message_start", "message": {**reply, "content": [], "stop_reason": None}}
+        for i, b in enumerate(reply["content"]):
+            if b["type"] == "tool_use":
+                yield {"type": "content_block_start", "index": i, "content_block": {**b, "input": {}}}
+                args = json.dumps(b["input"])
+                step = len(args) if self.whole_tool_args else 5
+                for j in range(0, len(args), step):
+                    yield {"type": "content_block_delta", "index": i,
+                           "delta": {"type": "input_json_delta", "partial_json": args[j:j + step]}}
+            else:
+                yield {"type": "content_block_start", "index": i, "content_block": {"type": "text", "text": ""}}
+                yield {"type": "content_block_delta", "index": i, "delta": {"type": "text_delta", "text": b["text"]}}
+            yield {"type": "content_block_stop", "index": i}
+        yield {"type": "message_delta", "delta": {"stop_reason": reply["stop_reason"]}, "usage": reply["usage"]}
+        yield {"type": "message_stop"}
 
     def complete(self, body):
         k = body.get("prompt_logprobs")

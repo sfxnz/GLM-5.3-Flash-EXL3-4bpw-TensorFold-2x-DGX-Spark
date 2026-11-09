@@ -61,6 +61,11 @@ probe_gpu_containers() {
   done
 }
 
+# probe_keyfile FILE: "ok", "missing" or "mode NNN".
+probe_keyfile() {
+  if [[ ! -f $1 ]]; then echo missing; elif [[ $(stat -c %a "$1") != 600 ]]; then echo "mode $(stat -c %a "$1")"; else echo ok; fi
+}
+
 probe_ours() { docker ps -a --filter "label=$1" --format '{{.Names}} {{.State}}'; }
 probe_image() { docker image inspect --format '{{.Id}} {{index .Config.Labels "tensorfold.archive.sha256"}}' "$1" 2>/dev/null || true; }
 probe_mem() { free -b | awk '/^Mem:/ {print $7}'; }
@@ -86,18 +91,19 @@ snapshot_check() {
 # rank_argv RANK: the whole `docker run` argv for that rank, one word per line. Both ranks come from here, so their
 # serve args are identical (the ranks refuse to serve otherwise) and only TF_GLM_RANK and the name differ.
 rank_argv() {
-  local cache=()
+  local cache=() keys=() mount=()
   [[ -n $PROMPT_CACHE_GIB ]] && cache=(--prompt-cache-gib "$PROMPT_CACHE_GIB")
+  [[ -n $API_KEY_FILE ]] && { keys=(--api-key-file "$API_KEY_FILE"); mount=(-v "$API_KEY_FILE:$API_KEY_FILE:ro"); }
   printf '%s\n' docker run -d --name "$NAME_PREFIX$1" --label "$LABEL" \
     --gpus all --network host --ipc host --device /dev/infiniband --ulimit memlock=-1 --ulimit core=0 --oom-score-adj 1000 \
-    -v "$REPO_DIR:$REPO_DIR:ro" \
+    -v "$REPO_DIR:$REPO_DIR:ro" "${mount[@]}" \
     -e "TF_GLM_RANK=$1" -e TF_GLM_WORLD=2 -e "NCCL_COMM_ID=$HEAD_IP:$NCCL_PORT" -e "NCCL_SOCKET_IFNAME=$IFACE" \
     -e "NCCL_IB_HCA=$HCA" -e "TF_ROCE_HCA=$ROCE_HCA" \
     -e "TF_GLM_DENSE_BITS=$DENSE_BITS" -e "TF_GLM_HEAD_BITS=$HEAD_BITS" -e "TENSORFOLD_MEMORY_RESERVE_GIB=$MEMORY_RESERVE_GIB" \
     -e "TF_GLM_INDEX_CUDA=$INDEX_CUDA" -e "TF_KV_SHARE=$KV_SHARE" \
     "$IMAGE" tensorfold-native serve "$SNAPSHOT" --host 0.0.0.0 --port "$PORT" --name "$SERVED_NAME" \
     --context "$CONTEXT" --parallel "$PARALLEL" --vision --vision-video-tokens "$VIDEO_TOKENS" \
-    --kv-cache "$KV_CACHE" "${cache[@]}" --no-update-check
+    --kv-cache "$KV_CACHE" "${cache[@]}" "${keys[@]}" --no-update-check
 }
 
 logs_tail() {
@@ -136,6 +142,8 @@ check_config() {
   [[ -z $PROMPT_CACHE_GIB || $PROMPT_CACHE_GIB =~ ^[0-9]+(\.[0-9]+)?$ ]] ||
     die "PROMPT_CACHE_GIB=$PROMPT_CACHE_GIB is not a number of GiB"
   [[ $KV_CACHE =~ ^(bf16|fp8)$ ]] || die "KV_CACHE=$KV_CACHE must be bf16 or fp8"
+  [[ -z $API_KEY_FILE || ($API_KEY_FILE == /* && $API_KEY_FILE != *[[:space:]]*) ]] ||
+    die "API_KEY_FILE=$API_KEY_FILE must be an absolute path without spaces"
   [[ $HF_CACHE == /* && $HF_CACHE != *[[:space:]]* ]] || die "HF_CACHE=$HF_CACHE must be an absolute path without spaces"
   REPO_DIR=$HF_CACHE/hub/models--${MODEL//\//--}
   SNAPSHOT=$REPO_DIR/snapshots/$REVISION
@@ -201,6 +209,13 @@ step_preflight() {
     bad=$(grep '^hca .* inactive$' <<<"$lines" | cut -d' ' -f2 | xargs || true)
     hca=$(grep '^hca .* ACTIVE$' <<<"$lines" | cut -d' ' -f2 | xargs || true)
     if [[ -n $bad ]]; then refuse "$host: RoCE HCA not ACTIVE: $bad"; else ok "$host RoCE HCAs ACTIVE: $hca"; fi
+    if [[ -n $API_KEY_FILE ]]; then
+      case $(on "$node" probe_keyfile "$API_KEY_FILE") in
+        ok) ok "$host API_KEY_FILE $API_KEY_FILE is mode 600" ;;
+        missing) refuse "$host: API_KEY_FILE $API_KEY_FILE is missing; both ranks read the same path (install -m 600)" ;;
+        *) refuse "$host: API_KEY_FILE $API_KEY_FILE must be mode 600; the engine refuses a key file others can read" ;;
+      esac
+    fi
     if ! gpu=$(on "$node" probe_gpu_containers "$LABEL"); then
       refuse "$host: cannot list containers"
     elif [[ -n $gpu ]]; then
