@@ -81,8 +81,8 @@ class FakeServer:
                 self.send_header("content-type", "text/event-stream")
                 self.end_headers()
 
-                def chunk(delta, **extra):
-                    self.wfile.write(b"data: " + json.dumps({"choices": [{"delta": delta, **extra}]}).encode() + b"\n\n")
+                def chunk(delta):
+                    self.wfile.write(b"data: " + json.dumps({"choices": [{"delta": delta}]}).encode() + b"\n\n")
 
                 message = reply["choices"][0]["message"]
                 for i, call in enumerate(message.get("tool_calls") or []):
@@ -114,8 +114,8 @@ class FakeServer:
         has_image = any(p.get("type") == "image_url" for p in parts)
         thinking = (body.get("chat_template_kwargs") or {}).get("enable_thinking", True)
         rendered = (json.dumps(body["tools"]) if body.get("tools") else "") + "".join(
-            "".join(p.get("text", "") for p in self.parts(m)) + (json.dumps(m["tool_calls"]) if m.get("tool_calls") else "")
-            for m in body["messages"])
+            "".join(p.get("text", "") for p in self.parts(m))
+            + (json.dumps(m["tool_calls"]) if m.get("tool_calls") else "") for m in body["messages"])
         prompt_tokens = len(rendered) // 4 + 10
         max_tokens = body.get("max_tokens", 256)
         if prompt_tokens + max_tokens > self.window:
