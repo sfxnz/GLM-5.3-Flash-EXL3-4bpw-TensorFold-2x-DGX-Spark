@@ -67,6 +67,29 @@ class BenchTests(unittest.TestCase):
         self.assertIsNotNone(report["summary"][1]["median_ttft_s"])
         self.assertTrue(all(b["stream"] and b["chat_template_kwargs"] == {"enable_thinking": False} for b in sent))
 
+    def test_warmup_runs_are_sent_but_not_recorded(self):
+        with FakeServer() as s, tempfile.TemporaryDirectory() as d, redirect_stdout(io.StringIO()):
+            rc = bench.main(["--concurrency", "1,2", "--runs", "1", "--warmup", "2", "--max-tokens", "16",
+                             "--url", s.url, "--out", f"{d}/bench.json"])
+            report = json.loads(Path(f"{d}/bench.json").read_text())
+            sent = len(s.requests)
+        self.assertEqual(rc, 0)
+        self.assertEqual(sent, (2 + 1) * (1 + 2))
+        self.assertEqual([r["concurrency"] for r in report["runs"]], [1, 2])
+        self.assertEqual([x["runs"] for x in report["summary"]], [1, 1])
+        self.assertEqual(report["settings"]["warmup"], 2)
+
+    def test_temperature_is_sent_only_when_set(self):
+        for args, sent_temps, recorded in [([], set(), None), (["--temperature", "0"], {0.0}, 0.0)]:
+            with FakeServer() as s, tempfile.TemporaryDirectory() as d, redirect_stdout(io.StringIO()):
+                bench.main(["--concurrency", "2", "--runs", "1", "--max-tokens", "16", "--url", s.url,
+                            "--out", f"{d}/bench.json", *args])
+                report = json.loads(Path(f"{d}/bench.json").read_text())
+                bodies = list(s.requests)
+            self.assertEqual({b["temperature"] for b in bodies if "temperature" in b}, sent_temps)
+            self.assertEqual(sum("temperature" in b for b in bodies), len(bodies) if sent_temps else 0)
+            self.assertEqual(report["settings"]["temperature"], recorded)
+
     def test_failed_streams_are_counted_not_hidden(self):
         with redirect_stdout(io.StringIO()):
             rc = bench.main(["--concurrency", "2", "--runs", "1", "--url", "http://127.0.0.1:9"])
