@@ -103,7 +103,7 @@ rank_argv() {
     -e "TF_GLM_INDEX_CUDA=$INDEX_CUDA" -e "TF_KV_SHARE=$KV_SHARE" \
     "$IMAGE" tensorfold-native serve "$SNAPSHOT" --host 0.0.0.0 --port "$PORT" --name "$SERVED_NAME" \
     --context "$CONTEXT" --parallel "$PARALLEL" --vision --vision-video-tokens "$VIDEO_TOKENS" \
-    --kv-cache "$KV_CACHE" "${cache[@]}" "${keys[@]}" --no-update-check
+    "${cache[@]}" "${keys[@]}" --no-update-check
 }
 
 logs_tail() {
@@ -141,7 +141,6 @@ check_config() {
   [[ $KV_SHARE =~ ^[0-9]+$ ]] && (( KV_SHARE <= 64 )) || die "KV_SHARE=$KV_SHARE must be 0 to 64"
   [[ -z $PROMPT_CACHE_GIB || $PROMPT_CACHE_GIB =~ ^[0-9]+(\.[0-9]+)?$ ]] ||
     die "PROMPT_CACHE_GIB=$PROMPT_CACHE_GIB is not a number of GiB"
-  [[ $KV_CACHE =~ ^(bf16|fp8)$ ]] || die "KV_CACHE=$KV_CACHE must be bf16 or fp8"
   [[ -z $API_KEY_FILE || ($API_KEY_FILE == /* && $API_KEY_FILE != *[[:space:]]*) ]] ||
     die "API_KEY_FILE=$API_KEY_FILE must be an absolute path without spaces"
   [[ $HF_CACHE == /* && $HF_CACHE != *[[:space:]]* ]] || die "HF_CACHE=$HF_CACHE must be an absolute path without spaces"
