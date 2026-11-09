@@ -4,16 +4,16 @@ libibverbs1:arm64	50.0-2ubuntu0.2
 libnccl2	2.30.7-1+cuda13.3
 /usr/lib/aarch64-linux-gnu/libibverbs/libmlx5-rdmav34.so
 total 5096
--rwxr-xr-x 1 root root 2980008 Nov  3 18:50 libtfgrammar.so
--rwxr-xr-x 1 root root  954288 Nov  4 13:07 libturbojpeg.so.0
--rwxr-xr-x 1 root root 1279304 Nov  4 13:07 libwebpdecoder.so.3
+-rwxr-xr-x 1 root root 2980008 Nov  8 17:00 libtfgrammar.so
+-rwxr-xr-x 1 root root  954288 Nov  9 15:16 libturbojpeg.so.0
+-rwxr-xr-x 1 root root 1279304 Nov  9 15:16 libwebpdecoder.so.3
 == /opt/tensorfold/lib/libtfgrammar.so
-	libm.so.6 => /lib/aarch64-linux-gnu/libm.so.6 (0x0000f0a47b5b0000)
-	libc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0000f0a47b3f0000)
-	libpthread.so.0 => /lib/aarch64-linux-gnu/libpthread.so.0 (0x0000f0a47b3c0000)
-	libdl.so.2 => /lib/aarch64-linux-gnu/libdl.so.2 (0x0000f0a47b390000)
+	libm.so.6 => /lib/aarch64-linux-gnu/libm.so.6 (0x0000e48fe1360000)
+	libc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0000e48fe11a0000)
+	libpthread.so.0 => /lib/aarch64-linux-gnu/libpthread.so.0 (0x0000e48fe1170000)
+	libdl.so.2 => /lib/aarch64-linux-gnu/libdl.so.2 (0x0000e48fe1140000)
 == /opt/tensorfold/lib/libturbojpeg.so.0
-	libc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0000fdd6cdf40000)
+	libc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0000e73faf9f0000)
 == /opt/tensorfold/lib/libwebpdecoder.so.3
-	libc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0000e8f572110000)
+	libc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0000fa34b6b30000)
 libjpeg-turbo version 3.1.4.1

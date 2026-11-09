@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# GLM-5.3-Flash EXL3 4bpw on two DGX Sparks: TensorFold 1.2.2 at TP=2 over the direct RoCE cable, with vision, MTP drafts
+# GLM-5.3-Flash EXL3 4bpw on two DGX Sparks: TensorFold 1.2.5 at TP=2 over the direct RoCE cable, with vision, MTP drafts
 # and thinking. Run it on the head (rank 0, HTTP); it drives the worker (rank 1) over ssh. Settings live in recipe.conf.
 # Each step reads the state that exists and acts only on the difference, so a rerun converges.
 # VALIDATE_ONLY=1 runs every check read-only, prints what it would do (both docker argvs included) and exits 1 if

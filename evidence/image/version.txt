@@ -1,1 +1,1 @@
-tensorfold-native 1.2.2
+tensorfold-native 1.2.5

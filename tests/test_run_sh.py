@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TR = "a" * 40
 MODEL = "sfxnz/GLM-5.3-Flash-EXL3-4bpw"
-TF_SHA = "17632c30f761e7f9051255744a17fc36f0b9c0d46343d47617bb34e7ec4e4128"
+TF_SHA = "1a0192b28d6ab6ec2749f3ff25515379dba4895171e781b30f810afc971ae4f8"
 GIB = 1 << 30
 SIDE_FILES = ["config.json", "generation_config.json", "tokenizer.json", "tokenizer_config.json",
               "processor_config.json", "chat_template.jinja"]
@@ -254,13 +254,13 @@ class ValidateOnly(unittest.TestCase):
     def test_differing_worker_image_plans_a_copy(self):
         self.pair.node("worker", image=f"sha256:{'2' * 64} {TF_SHA}")
         rc, out = self.pair.run()
-        self.assertIn("WOULD  copy tf-glm53:1.2.2 to spark2", out)
+        self.assertIn("WOULD  copy tf-glm53:1.2.5 to spark2", out)
         self.assertNotIn("WOULD  build", out)
 
     def test_image_with_another_archive_is_rebuilt(self):
         self.pair.node("head", image=f"sha256:{'1' * 64} {'0' * 64}")
         rc, out = self.pair.run()
-        self.assertIn("WOULD  build tf-glm53:1.2.2 from docker/", out)
+        self.assertIn("WOULD  build tf-glm53:1.2.5 from docker/", out)
 
     def test_memory_gate_refuses_and_force_overrides(self):
         self.pair.node("worker", mem=str(100 * GIB))
