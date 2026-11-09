@@ -76,6 +76,16 @@ class AgentsTests(unittest.TestCase):
         self.assertLess(s["resumed_over_cold"], 0.5)
         self.assertGreater(s["cold"]["median_ttft_s"], 0.3)
 
+    def test_a_new_seed_gives_each_client_a_new_document_and_the_same_system_prompt(self):
+        args = ["--clients", "2", "--turns", "1", "--system-tokens", "300", "--context-tokens", "300"]
+        _, _, first, _ = run(args)
+        _, _, again, _ = run(args)
+        _, _, other, _ = run([*args, "--seed", "1"])
+        docs = lambda bodies: sorted(b["messages"][1]["content"] for b in bodies)
+        self.assertEqual(docs(first), docs(again))
+        self.assertFalse(set(docs(first)) & set(docs(other)))
+        self.assertEqual(first[0]["messages"][0], other[0]["messages"][0])
+
     def test_failed_turns_are_counted_and_fail_the_run(self):
         with tempfile.TemporaryDirectory() as d, redirect_stdout(io.StringIO()):
             rc = agents.main(["--clients", "2", "--turns", "3", "--system-tokens", "100", "--url", "http://127.0.0.1:9",

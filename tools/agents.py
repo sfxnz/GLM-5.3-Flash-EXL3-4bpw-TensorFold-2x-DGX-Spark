@@ -1,7 +1,7 @@
 """Agent-shaped load: N clients hold multi-turn tool-using chats at once on one shared system prompt, streamed, thinking off.
 
 python3 tools/agents.py [--clients 4] [--turns 4] [--system-tokens 8000] [--context-tokens 0] [--max-tokens 256]
-                        [--temperature T] [--stagger 0] [--out evidence/run/agents.json]
+                        [--temperature T] [--seed 0] [--stagger 0] [--out evidence/run/agents.json]
 
 Every request carries the same seeded system prompt (tool guide and project rules) and the same tools array, so all
 clients can share that prefix. --context-tokens puts a seeded document of that size, different for each client, in the
@@ -81,11 +81,11 @@ def system_prompt(tokens):
         f"change any {r.choice(THINGS)} code.\n"))
 
 
-def first_message(client, context_tokens):
+def first_message(client, context_tokens, seed=0):
     task = TASKS[client % len(TASKS)]
     if not context_tokens:
         return task
-    listing = fill(context_tokens, random.Random(1000 + client), lambda r, i: (
+    listing = fill(context_tokens, random.Random(f"{seed}:{client}"), lambda r, i: (
         f"src/{r.choice(MODULES)}/part_{r.randint(1, 99)}.py:{r.randint(1, 2000)}: def {r.choice(MODULES)}_"
         f"{r.randint(100, 999)}(limit={r.randint(1, 500)}): returns the {r.choice(THINGS)}\n"))
     return f"Here is the code listing for this task:\n{listing}\n{task}"
@@ -126,7 +126,7 @@ def run_client(i, a, chat_url, system, turns):
     time.sleep(i * a.stagger)
     history = []
     for n in range(1, a.turns + 1):
-        history.append({"role": "user", "content": first_message(i, a.context_tokens) if n == 1
+        history.append({"role": "user", "content": first_message(i, a.context_tokens, a.seed) if n == 1
                         else FOLLOWUPS[(i + n) % len(FOLLOWUPS)]})
         body = {"model": a.model, "messages": [{"role": "system", "content": system}, *history], "tools": TOOLS,
                 "max_tokens": a.max_tokens, "chat_template_kwargs": {"enable_thinking": False}}
@@ -174,6 +174,7 @@ def main(argv=None):
     ap.add_argument("--context-tokens", type=int, default=0, help="each client's own document in its first message")
     ap.add_argument("--max-tokens", type=int, default=256)
     ap.add_argument("--temperature", type=float, help="sent only when set; the server's default otherwise")
+    ap.add_argument("--seed", type=int, default=0, help="picks the clients' documents; a new seed makes turn 1 cold again")
     ap.add_argument("--stagger", type=float, default=0.0, help="seconds between client starts")
     ap.add_argument("--url", default=recipe.default_url())
     ap.add_argument("--model", default=recipe.setting("SERVED_NAME"))
@@ -191,7 +192,7 @@ def main(argv=None):
     s = summarize(turns, time.monotonic() - t0)
 
     report = {"settings": {"url": a.url, "model": a.model, "clients": a.clients, "turns": a.turns,
-                           "system_tokens": a.system_tokens, "context_tokens": a.context_tokens,
+                           "system_tokens": a.system_tokens, "context_tokens": a.context_tokens, "seed": a.seed,
                            "max_tokens": a.max_tokens, "temperature": a.temperature, "stagger_s": a.stagger,
                            "thinking": False, "tools": [t["function"]["name"] for t in TOOLS],
                            "chars_per_token": CHARS_PER_TOKEN,
