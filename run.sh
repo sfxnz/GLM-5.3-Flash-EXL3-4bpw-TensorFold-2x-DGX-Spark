@@ -61,7 +61,6 @@ probe_gpu_containers() {
   done
 }
 
-# probe_keyfile FILE: "ok", "missing" or "mode NNN".
 probe_keyfile() {
   if [[ ! -f $1 ]]; then echo missing; elif [[ $(stat -c %a "$1") != 600 ]]; then echo "mode $(stat -c %a "$1")"; else echo ok; fi
 }

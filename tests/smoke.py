@@ -169,7 +169,7 @@ class Smoke:
 
     def auth(self):
         try:
-            with urllib.request.urlopen(self.url + "/v1/models", timeout=30) as r:  # no key headers
+            with urllib.request.urlopen(self.url + "/v1/models", timeout=30) as r:
                 status = r.status
         except urllib.error.HTTPError as e:
             status = e.code

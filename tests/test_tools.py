@@ -23,6 +23,9 @@ def events(text):
 
 
 class NeedleTests(unittest.TestCase):
+    def test_a_single_needle_is_the_one_earlier_evidence_used(self):
+        self.assertEqual(needle.needle(0), (7, "Hobart", "7319-ALPHA-42"))
+
     def test_finds_the_code_inside_the_window(self):
         with FakeServer(window=200000) as s, redirect_stdout(io.StringIO()) as out:
             rc = needle.main(["20000", "--url", s.url])

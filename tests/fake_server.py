@@ -197,7 +197,6 @@ class FakeServer:
                                      "acceptance_rate": self.accepted / 8, "tokens_per_round": 2.0}}
 
     def message(self, body):
-        """An Anthropic Messages reply, from the chat reply to the same conversation and tools."""
         chat = {"messages": body["messages"], "max_tokens": body.get("max_tokens", 256), "stream": body.get("stream"),
                 "chat_template_kwargs": {"enable_thinking": False},
                 "tools": [{"type": "function", "function": {"name": t["name"], "parameters": t["input_schema"]}}

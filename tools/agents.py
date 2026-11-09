@@ -92,7 +92,6 @@ def first_message(client, context_tokens, seed=0):
 
 
 def one_turn(chat_url, body):
-    """Streams one reply; returns (the assistant message to append, the turn's numbers)."""
     first = last = usage = None
     text, calls, deltas = [], {}, 0
     for t, chunk in recipe.stream(chat_url, body):
@@ -138,7 +137,7 @@ def run_client(i, a, chat_url, system, turns):
         turns.append(row)
         try:
             reply, numbers = one_turn(chat_url, body)
-        except Exception as e:  # recorded and counted; the conversation cannot go on past a turn with no reply
+        except Exception as e:
             row["error"] = repr(e)
             return
         row.update(numbers)

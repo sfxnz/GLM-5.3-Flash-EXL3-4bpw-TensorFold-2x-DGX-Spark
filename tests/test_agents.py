@@ -14,7 +14,6 @@ from fake_server import FakeServer  # noqa: E402
 
 
 def run(args, **knobs):
-    """Runs agents.py on a fake server: (exit code, report, every request body, each client's bodies in turn order)."""
     with FakeServer(**knobs) as s, tempfile.TemporaryDirectory() as d, redirect_stdout(io.StringIO()):
         rc = agents.main([*args, "--url", s.url, "--out", f"{d}/agents.json"])
         report = json.loads(Path(f"{d}/agents.json").read_text())
@@ -35,8 +34,9 @@ class AgentsTests(unittest.TestCase):
         self.assertGreater(len(bodies[0]["messages"][0]["content"]), 600 * 3)
         self.assertEqual({json.dumps(b["tools"]) for b in bodies}, {json.dumps(bodies[0]["tools"])})
         for sent in clients:
-            # Each turn adds the user message, the assistant reply and one tool result per call (the fake makes 2).
-            self.assertEqual([len(b["messages"]) for b in sent], [2, 6, 10])
+            system_and_user, user, reply, fake_tool_results = 2, 1, 1, 2
+            per_turn = user + reply + fake_tool_results
+            self.assertEqual([len(b["messages"]) for b in sent], [system_and_user + per_turn * n for n in range(3)])
             self.assertGreater(len(sent[0]["messages"][1]["content"]), 400 * 3)
             for earlier, later in zip(sent, sent[1:]):
                 self.assertEqual(later["messages"][:len(earlier["messages"])], earlier["messages"])

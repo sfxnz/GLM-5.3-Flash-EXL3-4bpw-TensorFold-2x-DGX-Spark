@@ -24,7 +24,6 @@ def default_url():
 
 
 def headers():
-    """The JSON content type, and the key from API_KEY in both header forms the server reads, when it is set."""
     h = {"content-type": "application/json"}
     if os.environ.get("API_KEY"):
         h.update({"authorization": f"Bearer {os.environ['API_KEY']}", "x-api-key": os.environ["API_KEY"]})

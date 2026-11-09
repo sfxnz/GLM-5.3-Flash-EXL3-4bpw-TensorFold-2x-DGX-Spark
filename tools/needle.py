@@ -32,7 +32,6 @@ LOCK = threading.Lock()
 
 
 def needle(k):
-    """Needle k's (haystack seed, archive, code). Needle 0 is the one a single run has always used."""
     return 7 + k, CITIES[(5 + k) % len(CITIES)], f"{7319 + 97 * k}-{WORDS[k % len(WORDS)]}-{42 + k}"
 
 
@@ -81,7 +80,6 @@ def main(argv=None):
     per_line = (d["usage"]["prompt_tokens"] - 10) / len(probe)
 
     def hunt(k, target):
-        """Needle k's result line, or None once an error stopped it (the error event is already printed)."""
         seed, archive, code = needle(k)
         tag = {"index": k} if a.concurrent > 1 else {}
         for _ in range(RETRIES + 1):
@@ -119,7 +117,7 @@ def main(argv=None):
     def worker(k):
         try:
             results[k] = hunt(k, target)
-        except Exception as e:  # a dropped connection costs its own needle, not the other needles' report
+        except Exception as e:
             emit("error", index=k, stage="needle", reason=repr(e))
 
     if a.concurrent == 1:
