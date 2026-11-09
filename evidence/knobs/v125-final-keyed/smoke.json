@@ -1,0 +1,336 @@
+{
+  "health": {
+    "ok": true,
+    "detail": {
+      "status": "ok"
+    }
+  },
+  "models": {
+    "ok": true,
+    "detail": {
+      "want": {
+        "id": "glm-5.3-flash",
+        "context_length": 1048576
+      },
+      "got": {
+        "object": "list",
+        "data": [
+          {
+            "id": "glm-5.3-flash",
+            "object": "model",
+            "created": 1794247158,
+            "owned_by": "tensorfold",
+            "capabilities": {
+              "text_generation": true,
+              "context_fitted": false,
+              "call_gates": false,
+              "loop_guard": true,
+              "thinking_budget": true,
+              "reasoning": true,
+              "answer_limit": true,
+              "structures": true,
+              "logprobs": false,
+              "penalties": false,
+              "prompt_logprobs": true,
+              "prompt_cache": false,
+              "warm_turns": false,
+              "plain_only": false,
+              "decides": false,
+              "pictures": false,
+              "greedy_only": false,
+              "slide_conversations": false,
+              "vision": true,
+              "speech": false,
+              "embeddings": false,
+              "readouts": false,
+              "rerank": false,
+              "thinking_switch": true,
+              "thinking_applicable": true
+            },
+            "context_length": 1048576,
+            "max_model_len": 1048576,
+            "reasoning": {
+              "default_enabled": true,
+              "supported_efforts": [
+                "max",
+                "high",
+                "low"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "thinking_on": {
+    "ok": true,
+    "detail": {
+      "status": 200,
+      "reasoning_chars": 43,
+      "content": "391",
+      "raw": {
+        "id": "chatcmpl-fd07a55db4c5a62a0de6b22deb900a7b",
+        "object": "chat.completion",
+        "created": 1794247158,
+        "model": "glm-5.3-flash",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "391",
+              "reasoning_content": "17 * 23 = 17 * 20 + 17 * 3 = 340 + 51 = 391"
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 26,
+          "completion_tokens": 30,
+          "total_tokens": 56,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 27
+          }
+        },
+        "exact_mode": "exact",
+        "tensorfold": {
+          "enable_thinking": true,
+          "reasoning_effort": null,
+          "engine": "lanes",
+          "tokens_per_second": 48.61923387621905,
+          "seconds": 0.59647176,
+          "prefill_seconds": 0.186350037,
+          "prefill_widths": [
+            26
+          ],
+          "prefill_raised": [],
+          "time_to_first_token": 0.206667555,
+          "sampling": "exact",
+          "drafts": true,
+          "token_sha": "8ca2bee34563",
+          "token_sha256": "8ca2bee345633743d1b7029f49c77f752b169f3fa00f39d1096dcfb770900394",
+          "min_rows": 3
+        },
+        "speculative": {
+          "rounds": 9,
+          "drafted": 24,
+          "accepted": 21,
+          "acceptance_rate": 0.875,
+          "tokens_per_round": 3.3333333333333335
+        }
+      }
+    }
+  },
+  "thinking_off": {
+    "ok": true,
+    "detail": {
+      "status": 200,
+      "reasoning_content": "",
+      "content": "391",
+      "raw": {
+        "id": "chatcmpl-44ac6536d20556bbb0cbcef6b99fd22d",
+        "object": "chat.completion",
+        "created": 1794247159,
+        "model": "glm-5.3-flash",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "391"
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 27,
+          "completion_tokens": 3,
+          "total_tokens": 30,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "exact_mode": "exact",
+        "tensorfold": {
+          "enable_thinking": false,
+          "reasoning_effort": "none",
+          "engine": "lanes",
+          "tokens_per_second": 35.71058903063195,
+          "seconds": 0.056005797,
+          "prefill_seconds": 0.172756067,
+          "prefill_widths": [
+            27
+          ],
+          "prefill_raised": [],
+          "time_to_first_token": 0.173186308,
+          "sampling": "exact",
+          "drafts": true,
+          "token_sha": "081fad44a944",
+          "token_sha256": "081fad44a94486f19f5f4ca6a76d5460a0d96c4f5dd2b840bcf96450fe3c2c65",
+          "min_rows": 3
+        },
+        "speculative": {
+          "rounds": 1,
+          "drafted": 2,
+          "accepted": 2,
+          "acceptance_rate": 1.0,
+          "tokens_per_round": 3.0
+        }
+      }
+    }
+  },
+  "vision": {
+    "ok": true,
+    "detail": {
+      "status": 200,
+      "content": "{\"left\": {\"color\": \"red\", \"shape\": \"square\"}, \"right\": {\"color\": \"blue\", \"shape\": \"circle\"}}"
+    }
+  },
+  "speculative": {
+    "ok": true,
+    "detail": {
+      "status": 200,
+      "speculative": {
+        "rounds": 122,
+        "drafted": 210,
+        "accepted": 134,
+        "acceptance_rate": 0.638095238095238,
+        "tokens_per_round": 2.098360655737705
+      }
+    }
+  },
+  "concurrent": {
+    "ok": true,
+    "detail": {
+      "requests": [
+        {
+          "status": 200,
+          "chars": 700,
+          "elapsed_s": 15.79
+        },
+        {
+          "status": 200,
+          "chars": 625,
+          "elapsed_s": 15.68
+        },
+        {
+          "status": 200,
+          "chars": 629,
+          "elapsed_s": 13.77
+        },
+        {
+          "status": 200,
+          "chars": 540,
+          "elapsed_s": 16.61
+        },
+        {
+          "status": 200,
+          "chars": 703,
+          "elapsed_s": 15.51
+        },
+        {
+          "status": 200,
+          "chars": 642,
+          "elapsed_s": 15.68
+        },
+        {
+          "status": 200,
+          "chars": 596,
+          "elapsed_s": 13.54
+        },
+        {
+          "status": 200,
+          "chars": 563,
+          "elapsed_s": 16.4
+        }
+      ]
+    }
+  },
+  "tool_stream": {
+    "ok": true,
+    "detail": {
+      "names": [
+        "get_weather"
+      ],
+      "pieces": [
+        "{\"city\":\"",
+        "Paris, France",
+        "\"",
+        ",\"unit\":\"",
+        "celsius",
+        "\"",
+        "}"
+      ],
+      "final": "{\"city\":\"Paris, France\",\"unit\":\"celsius\"}"
+    }
+  },
+  "messages": {
+    "ok": true,
+    "detail": {
+      "status": 200,
+      "raw": {
+        "id": "msg_044b86a2f112fa27bc08eca533ac3e8f",
+        "type": "message",
+        "role": "assistant",
+        "model": "glm-5.3-flash",
+        "content": [
+          {
+            "type": "text",
+            "text": "391"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "stop_sequence": null,
+        "usage": {
+          "input_tokens": 27,
+          "output_tokens": 3,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "output_tokens_details": {
+            "thinking_tokens": 0
+          }
+        }
+      }
+    }
+  },
+  "messages_stream": {
+    "ok": true,
+    "detail": {
+      "events": [
+        "message_start",
+        "content_block_start",
+        "content_block_delta",
+        "content_block_delta",
+        "content_block_delta",
+        "content_block_delta",
+        "content_block_delta",
+        "content_block_delta",
+        "content_block_delta",
+        "content_block_stop",
+        "message_delta",
+        "message_stop"
+      ],
+      "pieces": [
+        "{\"city\":\"",
+        "Paris, France",
+        "\"",
+        ",\"unit\":\"",
+        "celsius",
+        "\"",
+        "}"
+      ]
+    }
+  },
+  "auth": {
+    "ok": true,
+    "detail": {
+      "status_without_key": 401
+    }
+  }
+}
