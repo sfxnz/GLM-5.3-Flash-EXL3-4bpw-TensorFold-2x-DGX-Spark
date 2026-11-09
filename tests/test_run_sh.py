@@ -200,6 +200,38 @@ class ValidateOnly(unittest.TestCase):
             self.assertEqual(env_of(argv)["TF_GLM_DENSE_BITS"], "16")
             self.assertEqual(env_of(argv)["TENSORFOLD_MEMORY_RESERVE_GIB"], "12.2")
 
+    def test_serving_knobs_reach_both_ranks_identically(self):
+        c = conf("INDEX_CUDA", "VIDEO_TOKENS", "KV_SHARE", "KV_CACHE")
+        rc, out = self.pair.run()
+        self.assertEqual(rc, 0, out)
+        for argv in argvs(out).values():
+            e = env_of(argv)
+            self.assertEqual(e["TF_GLM_INDEX_CUDA"], c["INDEX_CUDA"])
+            self.assertEqual(e["TF_KV_SHARE"], c["KV_SHARE"])
+            self.assertEqual(flag(argv, "--vision-video-tokens"), c["VIDEO_TOKENS"])
+            self.assertEqual(flag(argv, "--kv-cache"), c["KV_CACHE"])
+            self.assertNotIn("--prompt-cache-gib", argv)
+        rc, out = self.pair.run(INDEX_CUDA="1", VIDEO_TOKENS="64", KV_SHARE="16", PROMPT_CACHE_GIB="3", KV_CACHE="fp8")
+        self.assertEqual(rc, 0, out)
+        a = argvs(out)
+        for argv in a.values():
+            e = env_of(argv)
+            self.assertEqual((e["TF_GLM_INDEX_CUDA"], e["TF_KV_SHARE"]), ("1", "16"))
+            self.assertEqual([flag(argv, f) for f in ("--vision-video-tokens", "--prompt-cache-gib", "--kv-cache")],
+                             ["64", "3", "fp8"])
+        strip = lambda argv, r: [w for w in argv if w not in (f"tf-glm53-rank{r}", f"TF_GLM_RANK={r}")]
+        self.assertEqual(strip(a[0], 0), strip(a[1], 1))
+
+    def test_bad_serving_knobs_are_refused(self):
+        for k, v, msg in (("INDEX_CUDA", "yes", "INDEX_CUDA=yes must be 0 or 1"),
+                          ("VIDEO_TOKENS", "32", "VIDEO_TOKENS=32 must be 64 to 262144"),
+                          ("KV_SHARE", "65", "KV_SHARE=65 must be 0 to 64"),
+                          ("PROMPT_CACHE_GIB", "2G", "PROMPT_CACHE_GIB=2G is not a number of GiB"),
+                          ("KV_CACHE", "fp16", "KV_CACHE=fp16 must be bf16 or fp8")):
+            rc, out = self.pair.run(**{k: v})
+            self.assertNotEqual(rc, 0)
+            self.assertIn(msg, out)
+
     def test_bad_pack_bits_and_reserve_are_refused(self):
         for k, v, msg in (("DENSE_BITS", "5", "DENSE_BITS=5 must be 4, 6, 8 or 16"),
                           ("HEAD_BITS", "bf16", "HEAD_BITS=bf16 must be 4, 6, 8 or 16"),

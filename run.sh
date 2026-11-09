@@ -86,14 +86,18 @@ snapshot_check() {
 # rank_argv RANK: the whole `docker run` argv for that rank, one word per line. Both ranks come from here, so their
 # serve args are identical (the ranks refuse to serve otherwise) and only TF_GLM_RANK and the name differ.
 rank_argv() {
+  local cache=()
+  [[ -n $PROMPT_CACHE_GIB ]] && cache=(--prompt-cache-gib "$PROMPT_CACHE_GIB")
   printf '%s\n' docker run -d --name "$NAME_PREFIX$1" --label "$LABEL" \
     --gpus all --network host --ipc host --device /dev/infiniband --ulimit memlock=-1 --ulimit core=0 --oom-score-adj 1000 \
     -v "$REPO_DIR:$REPO_DIR:ro" \
     -e "TF_GLM_RANK=$1" -e TF_GLM_WORLD=2 -e "NCCL_COMM_ID=$HEAD_IP:$NCCL_PORT" -e "NCCL_SOCKET_IFNAME=$IFACE" \
     -e "NCCL_IB_HCA=$HCA" -e "TF_ROCE_HCA=$ROCE_HCA" \
     -e "TF_GLM_DENSE_BITS=$DENSE_BITS" -e "TF_GLM_HEAD_BITS=$HEAD_BITS" -e "TENSORFOLD_MEMORY_RESERVE_GIB=$MEMORY_RESERVE_GIB" \
+    -e "TF_GLM_INDEX_CUDA=$INDEX_CUDA" -e "TF_KV_SHARE=$KV_SHARE" \
     "$IMAGE" tensorfold-native serve "$SNAPSHOT" --host 0.0.0.0 --port "$PORT" --name "$SERVED_NAME" \
-    --context "$CONTEXT" --parallel "$PARALLEL" --vision --no-update-check
+    --context "$CONTEXT" --parallel "$PARALLEL" --vision --vision-video-tokens "$VIDEO_TOKENS" \
+    --kv-cache "$KV_CACHE" "${cache[@]}" --no-update-check
 }
 
 logs_tail() {
@@ -125,6 +129,13 @@ check_config() {
     [[ ${!v} =~ ^(4|6|8|16)$ ]] || die "$v=${!v} must be 4, 6, 8 or 16"
   done
   [[ $MEMORY_RESERVE_GIB =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "MEMORY_RESERVE_GIB=$MEMORY_RESERVE_GIB is not a number of GiB"
+  [[ $INDEX_CUDA =~ ^[01]$ ]] || die "INDEX_CUDA=$INDEX_CUDA must be 0 or 1"
+  [[ $VIDEO_TOKENS =~ ^[1-9][0-9]*$ ]] && (( VIDEO_TOKENS >= 64 && VIDEO_TOKENS <= 262144 )) ||
+    die "VIDEO_TOKENS=$VIDEO_TOKENS must be 64 to 262144"
+  [[ $KV_SHARE =~ ^[0-9]+$ ]] && (( KV_SHARE <= 64 )) || die "KV_SHARE=$KV_SHARE must be 0 to 64"
+  [[ -z $PROMPT_CACHE_GIB || $PROMPT_CACHE_GIB =~ ^[0-9]+(\.[0-9]+)?$ ]] ||
+    die "PROMPT_CACHE_GIB=$PROMPT_CACHE_GIB is not a number of GiB"
+  [[ $KV_CACHE =~ ^(bf16|fp8)$ ]] || die "KV_CACHE=$KV_CACHE must be bf16 or fp8"
   [[ $HF_CACHE == /* && $HF_CACHE != *[[:space:]]* ]] || die "HF_CACHE=$HF_CACHE must be an absolute path without spaces"
   REPO_DIR=$HF_CACHE/hub/models--${MODEL//\//--}
   SNAPSHOT=$REPO_DIR/snapshots/$REVISION
