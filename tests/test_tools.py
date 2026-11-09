@@ -50,6 +50,26 @@ class NeedleTests(unittest.TestCase):
         self.assertTrue(ev[-1]["found"])
         self.assertLessEqual(ev[-1]["prompt_tokens"], 30000)
 
+    def test_concurrent_needles_each_carry_their_own_code_and_haystack(self):
+        with FakeServer(window=200000) as s, redirect_stdout(io.StringIO()) as out:
+            rc = needle.main(["8000", "--concurrent", "3", "--url", s.url])
+            haystacks = [b["messages"][0]["content"] for b in s.requests if "vault code" in b["messages"][0]["content"]]
+        ev = events(out.getvalue())
+        results = [e for e in ev if e["event"] == "result"]
+        self.assertEqual(rc, 0, out.getvalue())
+        self.assertEqual(sorted(r["index"] for r in results), [0, 1, 2])
+        self.assertEqual(len({r["vault_code"] for r in results}), 3)
+        self.assertTrue(all(r["found"] and r["vault_code"] in r["answer"] for r in results))
+        self.assertEqual(ev[-1], {"event": "summary", "found": 3, "needles": 3, "errors": 0})
+        self.assertEqual(len({h[:200] for h in haystacks}), 3)
+
+    def test_concurrent_needles_fail_when_answers_cross_between_requests(self):
+        with FakeServer(window=200000, crosstalk=True) as s, redirect_stdout(io.StringIO()) as out:
+            rc = needle.main(["8000", "--concurrent", "3", "--url", s.url])
+        ev = events(out.getvalue())
+        self.assertEqual(rc, 1, out.getvalue())
+        self.assertEqual(ev[-1]["found"], 0)
+
 
 class BenchTests(unittest.TestCase):
     def test_records_raw_streams_and_medians(self):
