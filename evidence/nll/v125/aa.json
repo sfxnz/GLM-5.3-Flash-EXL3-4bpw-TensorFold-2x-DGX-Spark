@@ -1,0 +1,145 @@
+{
+ "a": "v125-a1",
+ "b": "v125-a2",
+ "corpus": {
+  "version": "nll-corpus-v1",
+  "sha256": "dac2c62844f0f331fb4daa7d7f372a9d7ca861d9f27d4a0d2699388b55cb7c76"
+ },
+ "margin": 0.002,
+ "aa_floor": null,
+ "status": "pass",
+ "rows": [
+  {
+   "group": "all",
+   "unit": "chunk",
+   "units": 41,
+   "tokens": 178793,
+   "nll_a": 0.5819374195909702,
+   "nll_b": 0.5819374195909702,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "top1_agree": 1.0,
+   "identical": 1.0
+  },
+  {
+   "group": "prose",
+   "unit": "chunk",
+   "units": 12,
+   "tokens": 42809,
+   "nll_a": 0.2479708670968334,
+   "nll_b": 0.2479708670968334,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "top1_agree": 1.0,
+   "identical": 1.0
+  },
+  {
+   "group": "multilingual",
+   "unit": "chunk",
+   "units": 11,
+   "tokens": 40864,
+   "nll_a": 1.405343653568553,
+   "nll_b": 1.405343653568553,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "top1_agree": 1.0,
+   "identical": 1.0
+  },
+  {
+   "group": "code",
+   "unit": "chunk",
+   "units": 12,
+   "tokens": 42604,
+   "nll_a": 0.20539440117960367,
+   "nll_b": 0.20539440117960367,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "top1_agree": 1.0,
+   "identical": 1.0
+  },
+  {
+   "group": "math",
+   "unit": "chunk",
+   "units": 5,
+   "tokens": 20369,
+   "nll_a": 0.7047212643688666,
+   "nll_b": 0.7047212643688666,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "top1_agree": 1.0,
+   "identical": 1.0
+  },
+  {
+   "group": "long",
+   "unit": "chunk",
+   "units": 1,
+   "tokens": 32147,
+   "nll_a": 0.4012162456891583,
+   "nll_b": 0.4012162456891583,
+   "delta": 0.0,
+   "ci95": null,
+   "top1_agree": 1.0,
+   "identical": 1.0
+  },
+  {
+   "group": "long@0-4096",
+   "unit": "512-token block",
+   "units": 8,
+   "tokens": 4096,
+   "nll_a": 0.3506038247141987,
+   "nll_b": 0.3506038247141987,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "top1_agree": 1.0,
+   "identical": 1.0
+  },
+  {
+   "group": "long@4096-16384",
+   "unit": "512-token block",
+   "units": 24,
+   "tokens": 12288,
+   "nll_a": 0.3811053660077353,
+   "nll_b": 0.3811053660077353,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "top1_agree": 1.0,
+   "identical": 1.0
+  },
+  {
+   "group": "long@16384-end",
+   "unit": "512-token block",
+   "units": 31,
+   "tokens": 15763,
+   "nll_a": 0.4300452100892573,
+   "nll_b": 0.4300452100892573,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "top1_agree": 1.0,
+   "identical": 1.0
+  }
+ ]
+}

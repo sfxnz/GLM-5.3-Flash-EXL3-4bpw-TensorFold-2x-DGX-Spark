@@ -1,0 +1,11 @@
+knob v125-default-boot2: (recipe.conf defaults)
+TENSORFOLD_MEMORY_RESERVE_GIB=10.5
+TF_GLM_INDEX_CUDA=0
+TF_GLM_WORLD=2
+NCCL_IB_HCA=rocep1s0f1,roceP2p1s0f1
+TF_GLM_DENSE_BITS=8
+TF_GLM_HEAD_BITS=8
+TF_KV_SHARE=0
+TF_GLM_RANK=0
+TF_ROCE_HCA=rocep1s0f1
+tensorfold-native serve /home/sfxnz/.cache/huggingface/hub/models--sfxnz--GLM-5.3-Flash-EXL3-4bpw/snapshots/d75e26a4fedfdb0e9a7d2422afd9cdba926ca7e6 --host 0.0.0.0 --port 8000 --name glm-5.3-flash --context 1048576 --parallel 8 --vision --vision-video-tokens 16384 --kv-cache bf16 --no-update-check
