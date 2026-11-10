@@ -9,8 +9,8 @@ This recipe's own files are MIT-licensed (LICENSE). One part contains lines from
   are that project's code. Its LICENSE: "MIT License" / "Copyright (c) 2026 Michel Belleau".
 
 Not included. Each user fetches these under their own terms:
-- TensorFold 1.2.2 (Apache-2.0, https://github.com/ashhart/TensorFold). docker/Dockerfile installs the release
-  archive tensorfold-1.2.2-linux-aarch64.tar.gz. Its NOTICE and THIRD_PARTY_NOTICES.md ship inside it.
+- TensorFold 1.2.5 (Apache-2.0, https://github.com/ashhart/TensorFold). docker/Dockerfile installs the release
+  archive tensorfold-1.2.5-linux-aarch64.tar.gz. Its NOTICE and THIRD_PARTY_NOTICES.md ship inside it.
 - libjpeg-turbo 3.1.4.1 and libwebp 1.6.0, which docker/Dockerfile downloads, and the Ubuntu and NVIDIA packages it
   installs on nvidia/cuda:13.0.0-base-ubuntu24.04, each under its own license.
 - exllamav3 v1.6.6 (MIT, https://github.com/turboderp-org/exllamav3), which quant/Dockerfile builds from a clone.

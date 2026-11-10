@@ -7,6 +7,7 @@ import unittest
 import zlib
 from contextlib import redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import smoke  # noqa: E402
@@ -33,7 +34,30 @@ class SmokeTests(unittest.TestCase):
             rc, results, out = run_smoke(s)
         self.assertEqual(rc, 0, out)
         self.assertEqual(set(results), set(smoke.Smoke.CHECKS))
-        self.assertIn("smoke: 7/7 passed", out)
+        self.assertIn("smoke: 10/10 passed", out)
+        self.assertNotIn("auth", results)
+
+    def test_tool_arguments_must_stream_in_pieces_that_join_to_the_final_call(self):
+        with FakeServer(whole_tool_args=True) as s:
+            rc, results, _ = run_smoke(s)
+        self.assertEqual(rc, 1)
+        self.assertFalse(results["tool_stream"]["ok"])
+        self.assertFalse(results["messages_stream"]["ok"])
+        with FakeServer(drift_tool_args=True) as s:
+            rc, results, _ = run_smoke(s)
+        self.assertFalse(results["tool_stream"]["ok"])
+        self.assertTrue(results["messages"]["ok"])
+
+    def test_keyed_server_needs_the_key_and_the_tools_send_it(self):
+        with FakeServer(api_key="sk-test") as s, mock.patch.dict("os.environ", {"API_KEY": "sk-test"}):
+            rc, results, out = run_smoke(s)
+        self.assertEqual(rc, 0, out)
+        self.assertTrue(results["auth"]["ok"])
+        self.assertIn("smoke: 11/11 passed", out)
+        with FakeServer(api_key="sk-test") as s, mock.patch.dict("os.environ", {"API_KEY": "sk-wrong"}):
+            rc, results, _ = run_smoke(s)
+        self.assertEqual(rc, 1)
+        self.assertFalse(results["models"]["ok"])
 
     def test_concurrent_check_sends_parallel_requests(self):
         with FakeServer() as s:

@@ -1,0 +1,12 @@
+PASS  health  {"status": "ok"}
+PASS  models  {"want": {"id": "glm-5.3-flash", "context_length": 1048576}, "got": {"object": "list", "data": [{"id": "glm-5.3-flash", "object": "model", "created": 1794247158, "owned_by": "tensorfold", "capabilities": {"text_generation": true, "context_fitted": false, "call_gates": false, "loop_guard": true, "thi
+PASS  thinking_on  {"status": 200, "reasoning_chars": 43, "content": "391"}
+PASS  thinking_off  {"status": 200, "reasoning_content": "", "content": "391"}
+PASS  vision  {"status": 200, "content": "{\"left\": {\"color\": \"red\", \"shape\": \"square\"}, \"right\": {\"color\": \"blue\", \"shape\": \"circle\"}}"}
+PASS  speculative  {"status": 200, "speculative": {"rounds": 122, "drafted": 210, "accepted": 134, "acceptance_rate": 0.638095238095238, "tokens_per_round": 2.098360655737705}}
+PASS  concurrent  {"requests": [{"status": 200, "chars": 700, "elapsed_s": 15.79}, {"status": 200, "chars": 625, "elapsed_s": 15.68}, {"status": 200, "chars": 629, "elapsed_s": 13.77}, {"status": 200, "chars": 540, "elapsed_s": 16.61}, {"status": 200, "chars": 703, "elapsed_s": 15.51}, {"status": 200, "chars": 642, "
+PASS  tool_stream  {"names": ["get_weather"], "pieces": ["{\"city\":\"", "Paris, France", "\"", ",\"unit\":\"", "celsius", "\"", "}"], "final": "{\"city\":\"Paris, France\",\"unit\":\"celsius\"}"}
+PASS  messages  {"status": 200}
+PASS  messages_stream  {"events": ["message_start", "content_block_start", "content_block_delta", "content_block_delta", "content_block_delta", "content_block_delta", "content_block_delta", "content_block_delta", "content_block_delta", "content_block_stop", "message_delta", "message_stop"], "pieces": ["{\"city\":\"", "Par
+PASS  auth  {"status_without_key": 401}
+smoke: 11/11 passed

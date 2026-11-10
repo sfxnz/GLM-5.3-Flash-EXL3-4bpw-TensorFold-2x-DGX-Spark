@@ -1,0 +1,1 @@
+{"event": "diagnostic", "note": "needle 2's prompt alone, max_tokens 600; not a gate rerun", "status": 200, "inserted_after_record": 7326, "vault_code": "7513-CEDAR-44", "prompt_tokens": 519365, "found": true, "wall_s": 520.9, "answer": "7513-CEDAR-44"}

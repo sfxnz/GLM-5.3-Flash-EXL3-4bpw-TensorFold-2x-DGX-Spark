@@ -1,0 +1,4 @@
+kind     turns err   ttft_s max_ttft decode tok/s prompt_tok cached_tok
+cold         8   0  413.579  449.861         1.78    48185.0     6144.0
+resumed     24   0    2.632    39.91         5.53    48397.5    47104.0
+aggregate 3.95 tok/s over 493.238 s; resumed/cold ttft 0.006

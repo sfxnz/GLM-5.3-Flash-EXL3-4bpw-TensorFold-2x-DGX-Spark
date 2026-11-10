@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 # Checks tf-glm53 on this host (no model, no serve) and that PEER holds the same image ID. Writes evidence/image/.
 set -euo pipefail
-IMAGE=${IMAGE:-tf-glm53:1.2.2}
+DIR=$(cd "$(dirname "$0")/.." && pwd)
+# shellcheck source=recipe.conf
+source "$DIR/recipe.conf"
 PEER=${PEER:-spark2}
-OUT=$(cd "$(dirname "$0")/.." && pwd)/evidence/image
+OUT=$DIR/evidence/image
 mkdir -p "$OUT"
 run() { docker run --rm --gpus all "$IMAGE" "$@"; }
 
 run tensorfold-native --version | tee "$OUT/version.txt"
-grep -q '1\.2\.2' "$OUT/version.txt" || { echo "FAIL: --version is not 1.2.2" >&2; exit 1; }
+grep -qF "$TF_VERSION" "$OUT/version.txt" || { echo "FAIL: --version is not $TF_VERSION" >&2; exit 1; }
 
 run tensorfold-native capabilities --json > "$OUT/capabilities.json"
 jq -e '.chip == "nvidia-sm121"' "$OUT/capabilities.json" >/dev/null || { echo "FAIL: chip is not nvidia-sm121" >&2; exit 1; }

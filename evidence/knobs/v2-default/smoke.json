@@ -1,0 +1,350 @@
+{
+  "health": {
+    "ok": true,
+    "detail": {
+      "status": "ok",
+      "model": "glm-5.3-flash",
+      "model_ids": [
+        "glm-5.3-flash"
+      ],
+      "max_batch_size": 8,
+      "warming": false,
+      "memory": {
+        "active": 108943095160,
+        "cache": 0,
+        "peak": 108943095160
+      },
+      "live": {
+        "connections": 0,
+        "waiting": 0,
+        "decode_tokens_per_second": 0.5,
+        "prefill_tokens_per_second": 828.4
+      },
+      "version": "1.2.5",
+      "backend": "cuda",
+      "device": "NVIDIA GB10"
+    }
+  },
+  "models": {
+    "ok": true,
+    "detail": {
+      "want": {
+        "id": "glm-5.3-flash",
+        "context_length": 1048576
+      },
+      "got": {
+        "object": "list",
+        "data": [
+          {
+            "id": "glm-5.3-flash",
+            "object": "model",
+            "created": 1794251381,
+            "owned_by": "tensorfold",
+            "capabilities": {
+              "text_generation": true,
+              "context_fitted": false,
+              "call_gates": false,
+              "loop_guard": true,
+              "thinking_budget": true,
+              "reasoning": true,
+              "answer_limit": true,
+              "structures": true,
+              "logprobs": false,
+              "penalties": false,
+              "prompt_logprobs": true,
+              "prompt_cache": false,
+              "warm_turns": false,
+              "plain_only": false,
+              "decides": false,
+              "pictures": false,
+              "greedy_only": false,
+              "slide_conversations": false,
+              "vision": true,
+              "speech": false,
+              "embeddings": false,
+              "readouts": false,
+              "rerank": false,
+              "thinking_switch": true,
+              "thinking_applicable": true
+            },
+            "context_length": 1048576,
+            "max_model_len": 1048576,
+            "reasoning": {
+              "default_enabled": true,
+              "supported_efforts": [
+                "max",
+                "high",
+                "low"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "thinking_on": {
+    "ok": true,
+    "detail": {
+      "status": 200,
+      "reasoning_chars": 43,
+      "content": "391",
+      "raw": {
+        "id": "chatcmpl-ee416c7ed2e62d2ef4e92e77bd240efa",
+        "object": "chat.completion",
+        "created": 1794251381,
+        "model": "glm-5.3-flash",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "391",
+              "reasoning_content": "17 * 23 = 17 * 20 + 17 * 3 = 340 + 51 = 391"
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 26,
+          "completion_tokens": 30,
+          "total_tokens": 56,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 27
+          }
+        },
+        "exact_mode": "exact",
+        "tensorfold": {
+          "enable_thinking": true,
+          "reasoning_effort": null,
+          "engine": "lanes",
+          "tokens_per_second": 42.44414124886827,
+          "seconds": 0.683250954,
+          "prefill_seconds": 0.170819622,
+          "prefill_widths": [
+            26
+          ],
+          "prefill_raised": [],
+          "time_to_first_token": 0.171541336,
+          "sampling": "exact",
+          "drafts": true,
+          "token_sha": "8ca2bee34563",
+          "token_sha256": "8ca2bee345633743d1b7029f49c77f752b169f3fa00f39d1096dcfb770900394",
+          "min_rows": 2
+        },
+        "speculative": {
+          "rounds": 11,
+          "drafted": 22,
+          "accepted": 19,
+          "acceptance_rate": 0.8636363636363636,
+          "tokens_per_round": 2.727272727272727
+        }
+      }
+    }
+  },
+  "thinking_off": {
+    "ok": true,
+    "detail": {
+      "status": 200,
+      "reasoning_content": "",
+      "content": "391",
+      "raw": {
+        "id": "chatcmpl-7cda72c638b3b67fb746708e46351edc",
+        "object": "chat.completion",
+        "created": 1794251382,
+        "model": "glm-5.3-flash",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "391"
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 27,
+          "completion_tokens": 3,
+          "total_tokens": 30,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "exact_mode": "exact",
+        "tensorfold": {
+          "enable_thinking": false,
+          "reasoning_effort": "none",
+          "engine": "lanes",
+          "tokens_per_second": 35.633384568795336,
+          "seconds": 0.056127141,
+          "prefill_seconds": 0.169997204,
+          "prefill_widths": [
+            27
+          ],
+          "prefill_raised": [],
+          "time_to_first_token": 0.171070871,
+          "sampling": "exact",
+          "drafts": true,
+          "token_sha": "081fad44a944",
+          "token_sha256": "081fad44a94486f19f5f4ca6a76d5460a0d96c4f5dd2b840bcf96450fe3c2c65",
+          "min_rows": 3
+        },
+        "speculative": {
+          "rounds": 1,
+          "drafted": 2,
+          "accepted": 2,
+          "acceptance_rate": 1.0,
+          "tokens_per_round": 3.0
+        }
+      }
+    }
+  },
+  "vision": {
+    "ok": true,
+    "detail": {
+      "status": 200,
+      "content": "{\"left\": {\"color\": \"red\", \"shape\": \"square\"}, \"right\": {\"color\": \"blue\", \"shape\": \"circle\"}}"
+    }
+  },
+  "speculative": {
+    "ok": true,
+    "detail": {
+      "status": 200,
+      "speculative": {
+        "rounds": 139,
+        "drafted": 188,
+        "accepted": 116,
+        "acceptance_rate": 0.6170212765957447,
+        "tokens_per_round": 1.841726618705036
+      }
+    }
+  },
+  "concurrent": {
+    "ok": true,
+    "detail": {
+      "requests": [
+        {
+          "status": 200,
+          "chars": 693,
+          "elapsed_s": 19.44
+        },
+        {
+          "status": 200,
+          "chars": 606,
+          "elapsed_s": 19.96
+        },
+        {
+          "status": 200,
+          "chars": 597,
+          "elapsed_s": 16.84
+        },
+        {
+          "status": 200,
+          "chars": 563,
+          "elapsed_s": 19.44
+        },
+        {
+          "status": 200,
+          "chars": 675,
+          "elapsed_s": 19.08
+        },
+        {
+          "status": 200,
+          "chars": 633,
+          "elapsed_s": 19.44
+        },
+        {
+          "status": 200,
+          "chars": 676,
+          "elapsed_s": 19.56
+        },
+        {
+          "status": 200,
+          "chars": 547,
+          "elapsed_s": 20.11
+        }
+      ]
+    }
+  },
+  "tool_stream": {
+    "ok": true,
+    "detail": {
+      "names": [
+        "get_weather"
+      ],
+      "pieces": [
+        "{\"city\":\"",
+        "Paris, France",
+        "\"",
+        ",\"unit\":\"",
+        "celsius",
+        "\"",
+        "}"
+      ],
+      "final": "{\"city\":\"Paris, France\",\"unit\":\"celsius\"}"
+    }
+  },
+  "messages": {
+    "ok": true,
+    "detail": {
+      "status": 200,
+      "raw": {
+        "id": "msg_34d9027e15214704fce5c90d580d2d2c",
+        "type": "message",
+        "role": "assistant",
+        "model": "glm-5.3-flash",
+        "content": [
+          {
+            "type": "text",
+            "text": "391"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "stop_sequence": null,
+        "usage": {
+          "input_tokens": 27,
+          "output_tokens": 3,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "output_tokens_details": {
+            "thinking_tokens": 0
+          }
+        }
+      }
+    }
+  },
+  "messages_stream": {
+    "ok": true,
+    "detail": {
+      "events": [
+        "message_start",
+        "content_block_start",
+        "content_block_delta",
+        "content_block_delta",
+        "content_block_delta",
+        "content_block_delta",
+        "content_block_delta",
+        "content_block_delta",
+        "content_block_delta",
+        "content_block_stop",
+        "message_delta",
+        "message_stop"
+      ],
+      "pieces": [
+        "{\"city\":\"",
+        "Paris, France",
+        "\"",
+        ",\"unit\":\"",
+        "celsius",
+        "\"",
+        "}"
+      ]
+    }
+  }
+}

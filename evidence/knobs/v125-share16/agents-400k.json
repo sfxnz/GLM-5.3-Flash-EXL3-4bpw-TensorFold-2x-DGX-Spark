@@ -1,0 +1,73 @@
+{
+  "settings": {
+    "url": "http://127.0.0.1:8000",
+    "model": "glm-5.3-flash",
+    "clients": 1,
+    "turns": 2,
+    "system_tokens": 8000,
+    "context_tokens": 315000,
+    "seed": 3,
+    "max_tokens": 256,
+    "temperature": null,
+    "stagger_s": 0.0,
+    "thinking": false,
+    "tools": [
+      "read_file",
+      "grep",
+      "run_shell",
+      "write_file"
+    ],
+    "chars_per_token": 4,
+    "system_sha256": "5842cdf0bd19fbf8a054b1a062f13b2312b7bd901b578f21c32f3be69049a89d",
+    "started": "2026-11-09T17:40:57Z"
+  },
+  "turns": [
+    {
+      "client": 0,
+      "turn": 1,
+      "kind": "cold",
+      "prompt_tokens": 405390,
+      "cached_tokens": 6144,
+      "ttft_s": 381.889,
+      "decode_tok_s": 41.06,
+      "completion_tokens": 41,
+      "tool_calls": 2,
+      "error": null
+    },
+    {
+      "client": 0,
+      "turn": 2,
+      "kind": "resumed",
+      "prompt_tokens": 405479,
+      "cached_tokens": 403456,
+      "ttft_s": 2.273,
+      "decode_tok_s": 55.68,
+      "completion_tokens": 28,
+      "tool_calls": 2,
+      "error": null
+    }
+  ],
+  "summary": {
+    "cold": {
+      "turns": 1,
+      "errors": 0,
+      "median_ttft_s": 381.889,
+      "max_ttft_s": 381.889,
+      "median_decode_tok_s": 41.06,
+      "median_prompt_tokens": 405390,
+      "median_cached_tokens": 6144
+    },
+    "resumed": {
+      "turns": 1,
+      "errors": 0,
+      "median_ttft_s": 2.273,
+      "max_ttft_s": 2.273,
+      "median_decode_tok_s": 55.68,
+      "median_prompt_tokens": 405479,
+      "median_cached_tokens": 403456
+    },
+    "wall_s": 385.738,
+    "aggregate_tok_s": 0.18,
+    "resumed_over_cold": 0.006
+  }
+}

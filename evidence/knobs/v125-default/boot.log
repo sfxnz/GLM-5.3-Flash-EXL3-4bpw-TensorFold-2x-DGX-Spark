@@ -1,0 +1,26 @@
+info: rank 0: liveness lines from 1 ranks on port 29584
+info: glm kv selection: pool pages; TF_KV_PAGES=auto (default); rank 0 of 2; cache bf16
+info: p2p: rank 0 of 2: NCCL's init log is at /tmp/tf-p2p-8tvxYm/nccl.log until startup diagnostics finish; if this rank stops before then, that file holds NCCL's last lines
+info: rank 0 startup: entering NCCL init
+info: rank 0: NCCL id cc1281aa sent
+info: rank 0 startup: entering NCCL init (2 ranks, id cc1281aa, NCCL 2.30.7, CUDA device 0 000F:01:00.0)
+info: rank 0 startup: NCCL init done in 1493 ms
+info: p2p: rank 0 of 2: GPU 0 NVIDIA GB10 (0000000F:01:00.0); driver 580.178.04, CUDA driver API 13.0, NCCL 2.30.7
+info: p2p: peer access: TensorFold enables none itself (no cuCtxEnablePeerAccess); NCCL sets up its own peers
+info: p2p: NCCL transport (this rank's connections): rank 1 NET/IB (128 connections)
+info: rank 0 startup: entering peer warm-up
+info: rank 0 startup: entering weights
+info: checkpoint digest: 163.6 GiB read in 50.2 s, 0/120 cached files
+info: weights: 16 readers read 156.4 GiB ahead of the loader
+info: glm: 290 linears packed (8/8 bits), 3.80 GiB freed
+info: TF_GLM_L2PF: 134 rows, 1066 MiB a decode window, 2 CTAs a site, the gathers' sites at 150 GB/s (0: unpaced)
+info: glm: a prompt chunk's exchanges in 3 row pieces
+info: RoCE all-gather: 1 HCA(s), shards up to 4096 KiB by RDMA writes
+info: KV page groups: one page 6.38 MiB, 512 rows of the full group; full: layers not named, 12.75 KiB a token, 512 rows a page, 0 B padding (0.0 %)
+info: rank 0 startup: entering calibration
+info: rank 0 startup: entering ready
+[tensorfold] chat template: the checkpoint's
+[tensorfold] warning: non-loopback server has no API key; requests are open
+[tensorfold] CUDA sm_121 device 0 (NVIDIA GB10, memory shared with the host): model 83.08 GiB; 8 streams at once, the engine's own and 7 more taking 2056 pages of 512 rows (12.80 GiB) as they need them (enough for 1 at a 1048576-token window), 340 MiB fixed each, of 17.9 GiB left after a 10.5 GiB reserve; prompts in passes of up to 2048 rows, a 2.7 GiB prompt cache; own glue kernels
+[tensorfold] profile: stable; registered overrides: none
+[tensorfold] serving glm-5.3-flash at http://0.0.0.0:8000/v1 (sampling: temperature 1.0, top_p 0.95; drafts: MTP + copies; context: 1048576; loaded in 146.8s)

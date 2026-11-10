@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TR = "a" * 40
 MODEL = "sfxnz/GLM-5.3-Flash-EXL3-4bpw"
-TF_SHA = "17632c30f761e7f9051255744a17fc36f0b9c0d46343d47617bb34e7ec4e4128"
+TF_SHA = "1a0192b28d6ab6ec2749f3ff25515379dba4895171e781b30f810afc971ae4f8"
 GIB = 1 << 30
 SIDE_FILES = ["config.json", "generation_config.json", "tokenizer.json", "tokenizer_config.json",
               "processor_config.json", "chat_template.jinja"]
@@ -200,6 +200,56 @@ class ValidateOnly(unittest.TestCase):
             self.assertEqual(env_of(argv)["TF_GLM_DENSE_BITS"], "16")
             self.assertEqual(env_of(argv)["TENSORFOLD_MEMORY_RESERVE_GIB"], "12.2")
 
+    def test_serving_knobs_reach_both_ranks_identically(self):
+        c = conf("INDEX_CUDA", "VIDEO_TOKENS", "KV_SHARE")
+        rc, out = self.pair.run()
+        self.assertEqual(rc, 0, out)
+        for argv in argvs(out).values():
+            e = env_of(argv)
+            self.assertEqual(e["TF_GLM_INDEX_CUDA"], c["INDEX_CUDA"])
+            self.assertEqual(e["TF_KV_SHARE"], c["KV_SHARE"])
+            self.assertEqual(flag(argv, "--vision-video-tokens"), c["VIDEO_TOKENS"])
+            self.assertNotIn("--kv-cache", argv)
+            self.assertNotIn("--prompt-cache-gib", argv)
+        rc, out = self.pair.run(INDEX_CUDA="1", VIDEO_TOKENS="64", KV_SHARE="16", PROMPT_CACHE_GIB="3")
+        self.assertEqual(rc, 0, out)
+        a = argvs(out)
+        for argv in a.values():
+            e = env_of(argv)
+            self.assertEqual((e["TF_GLM_INDEX_CUDA"], e["TF_KV_SHARE"]), ("1", "16"))
+            self.assertEqual([flag(argv, f) for f in ("--vision-video-tokens", "--prompt-cache-gib")], ["64", "3"])
+        strip = lambda argv, r: [w for w in argv if w not in (f"tf-glm53-rank{r}", f"TF_GLM_RANK={r}")]
+        self.assertEqual(strip(a[0], 0), strip(a[1], 1))
+
+    def test_api_key_file_is_mounted_and_passed_to_both_ranks(self):
+        rc, out = self.pair.run()
+        self.assertTrue(all("--api-key-file" not in argv for argv in argvs(out).values()))
+        with tempfile.TemporaryDirectory() as d:
+            key = Path(d) / "server.keys"
+            key.write_text("agents: sk-local-1\n")
+            key.chmod(0o600)
+            rc, out = self.pair.run(API_KEY_FILE=str(key))
+            self.assertEqual(rc, 0, out)
+            for argv in argvs(out).values():
+                self.assertEqual(flag(argv, "--api-key-file"), str(key))
+                self.assertIn(f"{key}:{key}:ro", argv)
+            key.chmod(0o644)
+            rc, out = self.pair.run(API_KEY_FILE=str(key))
+            self.assertNotEqual(rc, 0)
+            self.assertIn(f"API_KEY_FILE {key} must be mode 600", out)
+            rc, out = self.pair.run(API_KEY_FILE=f"{d}/missing.keys")
+            self.assertNotEqual(rc, 0)
+            self.assertIn(f"API_KEY_FILE {d}/missing.keys is missing", out)
+
+    def test_bad_serving_knobs_are_refused(self):
+        for k, v, msg in (("INDEX_CUDA", "yes", "INDEX_CUDA=yes must be 0 or 1"),
+                          ("VIDEO_TOKENS", "32", "VIDEO_TOKENS=32 must be 64 to 262144"),
+                          ("KV_SHARE", "65", "KV_SHARE=65 must be 0 to 64"),
+                          ("PROMPT_CACHE_GIB", "2G", "PROMPT_CACHE_GIB=2G is not a number of GiB")):
+            rc, out = self.pair.run(**{k: v})
+            self.assertNotEqual(rc, 0)
+            self.assertIn(msg, out)
+
     def test_bad_pack_bits_and_reserve_are_refused(self):
         for k, v, msg in (("DENSE_BITS", "5", "DENSE_BITS=5 must be 4, 6, 8 or 16"),
                           ("HEAD_BITS", "bf16", "HEAD_BITS=bf16 must be 4, 6, 8 or 16"),
@@ -254,13 +304,13 @@ class ValidateOnly(unittest.TestCase):
     def test_differing_worker_image_plans_a_copy(self):
         self.pair.node("worker", image=f"sha256:{'2' * 64} {TF_SHA}")
         rc, out = self.pair.run()
-        self.assertIn("WOULD  copy tf-glm53:1.2.2 to spark2", out)
+        self.assertIn("WOULD  copy tf-glm53:1.2.5 to spark2", out)
         self.assertNotIn("WOULD  build", out)
 
     def test_image_with_another_archive_is_rebuilt(self):
         self.pair.node("head", image=f"sha256:{'1' * 64} {'0' * 64}")
         rc, out = self.pair.run()
-        self.assertIn("WOULD  build tf-glm53:1.2.2 from docker/", out)
+        self.assertIn("WOULD  build tf-glm53:1.2.5 from docker/", out)
 
     def test_memory_gate_refuses_and_force_overrides(self):
         self.pair.node("worker", mem=str(100 * GIB))

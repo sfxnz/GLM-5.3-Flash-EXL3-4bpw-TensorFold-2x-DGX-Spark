@@ -23,6 +23,9 @@ def events(text):
 
 
 class NeedleTests(unittest.TestCase):
+    def test_a_single_needle_is_the_one_earlier_evidence_used(self):
+        self.assertEqual(needle.needle(0), (7, "Hobart", "7319-ALPHA-42"))
+
     def test_finds_the_code_inside_the_window(self):
         with FakeServer(window=200000) as s, redirect_stdout(io.StringIO()) as out:
             rc = needle.main(["20000", "--url", s.url])
@@ -50,6 +53,26 @@ class NeedleTests(unittest.TestCase):
         self.assertTrue(ev[-1]["found"])
         self.assertLessEqual(ev[-1]["prompt_tokens"], 30000)
 
+    def test_concurrent_needles_each_carry_their_own_code_and_haystack(self):
+        with FakeServer(window=200000) as s, redirect_stdout(io.StringIO()) as out:
+            rc = needle.main(["8000", "--concurrent", "3", "--url", s.url])
+            haystacks = [b["messages"][0]["content"] for b in s.requests if "vault code" in b["messages"][0]["content"]]
+        ev = events(out.getvalue())
+        results = [e for e in ev if e["event"] == "result"]
+        self.assertEqual(rc, 0, out.getvalue())
+        self.assertEqual(sorted(r["index"] for r in results), [0, 1, 2])
+        self.assertEqual(len({r["vault_code"] for r in results}), 3)
+        self.assertTrue(all(r["found"] and r["vault_code"] in r["answer"] for r in results))
+        self.assertEqual(ev[-1], {"event": "summary", "found": 3, "needles": 3, "errors": 0})
+        self.assertEqual(len({h[:200] for h in haystacks}), 3)
+
+    def test_concurrent_needles_fail_when_answers_cross_between_requests(self):
+        with FakeServer(window=200000, crosstalk=True) as s, redirect_stdout(io.StringIO()) as out:
+            rc = needle.main(["8000", "--concurrent", "3", "--url", s.url])
+        ev = events(out.getvalue())
+        self.assertEqual(rc, 1, out.getvalue())
+        self.assertEqual(ev[-1]["found"], 0)
+
 
 class BenchTests(unittest.TestCase):
     def test_records_raw_streams_and_medians(self):
@@ -66,6 +89,29 @@ class BenchTests(unittest.TestCase):
         self.assertEqual(stream["tokens_from"], "usage")
         self.assertIsNotNone(report["summary"][1]["median_ttft_s"])
         self.assertTrue(all(b["stream"] and b["chat_template_kwargs"] == {"enable_thinking": False} for b in sent))
+
+    def test_warmup_runs_are_sent_but_not_recorded(self):
+        with FakeServer() as s, tempfile.TemporaryDirectory() as d, redirect_stdout(io.StringIO()):
+            rc = bench.main(["--concurrency", "1,2", "--runs", "1", "--warmup", "2", "--max-tokens", "16",
+                             "--url", s.url, "--out", f"{d}/bench.json"])
+            report = json.loads(Path(f"{d}/bench.json").read_text())
+            sent = len(s.requests)
+        self.assertEqual(rc, 0)
+        self.assertEqual(sent, (2 + 1) * (1 + 2))
+        self.assertEqual([r["concurrency"] for r in report["runs"]], [1, 2])
+        self.assertEqual([x["runs"] for x in report["summary"]], [1, 1])
+        self.assertEqual(report["settings"]["warmup"], 2)
+
+    def test_temperature_is_sent_only_when_set(self):
+        for args, sent_temps, recorded in [([], set(), None), (["--temperature", "0"], {0.0}, 0.0)]:
+            with FakeServer() as s, tempfile.TemporaryDirectory() as d, redirect_stdout(io.StringIO()):
+                bench.main(["--concurrency", "2", "--runs", "1", "--max-tokens", "16", "--url", s.url,
+                            "--out", f"{d}/bench.json", *args])
+                report = json.loads(Path(f"{d}/bench.json").read_text())
+                bodies = list(s.requests)
+            self.assertEqual({b["temperature"] for b in bodies if "temperature" in b}, sent_temps)
+            self.assertEqual(sum("temperature" in b for b in bodies), len(bodies) if sent_temps else 0)
+            self.assertEqual(report["settings"]["temperature"], recorded)
 
     def test_failed_streams_are_counted_not_hidden(self):
         with redirect_stdout(io.StringIO()):

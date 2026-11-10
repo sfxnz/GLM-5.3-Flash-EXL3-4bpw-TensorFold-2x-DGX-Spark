@@ -1,0 +1,27 @@
+info: rank 0: liveness lines from 1 ranks on port 29584
+info: glm kv selection: pool pages; TF_KV_PAGES=auto (default); rank 0 of 2; cache bf16
+info: p2p: rank 0 of 2: NCCL's init log is at /tmp/tf-p2p-WrtKjP/nccl.log until startup diagnostics finish; if this rank stops before then, that file holds NCCL's last lines
+info: rank 0 startup: entering NCCL init
+info: rank 0: NCCL id cc1281aa sent
+info: rank 0 startup: entering NCCL init (2 ranks, id cc1281aa, NCCL 2.30.7, CUDA device 0 000F:01:00.0)
+info: rank 0 startup: NCCL init done in 1577 ms
+info: p2p: rank 0 of 2: GPU 0 NVIDIA GB10 (0000000F:01:00.0); driver 580.178.04, CUDA driver API 13.0, NCCL 2.30.7
+info: p2p: peer access: TensorFold enables none itself (no cuCtxEnablePeerAccess); NCCL sets up its own peers
+info: p2p: NCCL transport (this rank's connections): rank 1 NET/IB (128 connections)
+info: rank 0 startup: entering peer warm-up
+info: rank 0 startup: entering weights
+info: checkpoint digest: 163.6 GiB read in 50.4 s, 0/120 cached files
+info: weights: 16 readers read 156.4 GiB ahead of the loader
+info: glm: 290 linears packed (8/8 bits), 3.80 GiB freed
+info: TF_GLM_L2PF: 134 rows, 1066 MiB a decode window, 2 CTAs a site, the gathers' sites at 150 GB/s (0: unpaced)
+info: glm: a prompt chunk's exchanges in 3 row pieces
+info: RoCE all-gather: 2 HCA(s), shards up to 4096 KiB by RDMA writes
+warning: TF_KV_SHARE=16 keeps 16 states in the prompt cache's slots, under 4 a GLM stream at --parallel 8: live streams evict each other's before a resume; 32 take TF_KV_SHARE=32 and --prompt-cache-gib 6
+info: KV page groups: one page 6.38 MiB, 512 rows of the full group; full: layers not named, 12.75 KiB a token, 512 rows a page, 0 B padding (0.0 %); snapshot, outside the pool: 180.00 MiB on 29 pages, 4.88 MiB padding (2.6 %)
+info: rank 0 startup: entering calibration
+info: rank 0 startup: entering ready
+[tensorfold] chat template: the checkpoint's
+[tensorfold] warning: non-loopback server has no API key; requests are open
+[tensorfold] CUDA sm_121 device 0 (NVIDIA GB10, memory shared with the host): model 82.95 GiB; 8 streams at once, the engine's own and 7 more taking 2315 pages of 512 rows (14.41 GiB) as they need them (enough for 1 at a 1048576-token window), 212 MiB fixed each, of 18.7 GiB left after a 10.5 GiB reserve; prompts in passes of up to 2048 rows, 16 kept states' slots (2.8 GiB) and the prompt cache over the pool's pages; own glue kernels
+[tensorfold] profile: stable; registered overrides: TF_KV_SHARE=16 (identical, env)
+[tensorfold] serving glm-5.3-flash at http://0.0.0.0:8000/v1 (sampling: temperature 1.0, top_p 0.95; drafts: MTP + copies; context: 1048576; loaded in 144.0s)

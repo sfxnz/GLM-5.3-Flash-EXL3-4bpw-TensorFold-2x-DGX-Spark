@@ -1,0 +1,9 @@
+info: glm kv selection: pool pages; TF_KV_PAGES=auto (default); rank 1 of 2; cache bf16
+info: p2p: rank 1 of 2: GPU 0 NVIDIA GB10 (0000000F:01:00.0); driver 580.178.04, CUDA driver API 13.0, NCCL 2.30.7
+info: p2p: peer access: TensorFold enables none itself (no cuCtxEnablePeerAccess); NCCL sets up its own peers
+info: p2p: NCCL transport (this rank's connections): rank 0 NET/IB (132 connections)
+info: checkpoint digest: 163.6 GiB read in 40.6 s, 0/120 cached files
+info: weights: 16 readers read 156.4 GiB ahead of the loader
+info: glm: 290 linears packed (8/8 bits), 3.80 GiB freed
+info: RoCE all-gather: 1 HCA(s), shards up to 4096 KiB by RDMA writes
+info: the room this rank reports counts the 0.53 GiB free on the per-CPU page lists beyond their resting level (MemAvailable does not)
