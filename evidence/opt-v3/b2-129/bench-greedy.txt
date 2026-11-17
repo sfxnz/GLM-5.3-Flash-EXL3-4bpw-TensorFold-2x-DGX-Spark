@@ -1,0 +1,2 @@
+  c runs err   ttft_s  decode tok/s  aggregate tok/s
+  1    4   0    0.175        35.255           34.845

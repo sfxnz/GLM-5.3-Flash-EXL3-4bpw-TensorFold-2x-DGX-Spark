@@ -1,0 +1,36 @@
+== before-stop 2026-11-17T18:12:38Z
+-- head
+MemFree: 5750800 kB MemAvailable: 11307576 kB Buffers: 2323792 kB Cached: 3916688 kB SwapFree: 14180676 kB 
+Node 0, zone   Normal  32077  32460  73208  69010   6340   2510    921    446    163     58      2      0      0      0 
+allocstall_normal 92375 compact_stall 2408897 compact_fail 1678096 
+-- worker
+MemFree: 16113028 kB MemAvailable: 15987632 kB Buffers: 21616 kB Cached: 2537392 kB SwapFree: 16629696 kB 
+Node 0, zone   Normal   4444   3224  16560  23736   6710   7638   6114   5204   4159   2123     62      0      0      0 
+allocstall_normal 27009 compact_stall 355521 compact_fail 217818 
+== after-stop 2026-11-17T18:12:48Z
+-- head
+MemFree: 114681200 kB MemAvailable: 120312828 kB Buffers: 2324936 kB Cached: 2158356 kB SwapFree: 14180692 kB 
+Node 0, zone   Normal 105876  68393  76797  74885  63799  53822  40876  28868  19506  12894   4795    826     23      1 
+allocstall_normal 92375 compact_stall 2408897 compact_fail 1678096 
+-- worker
+MemFree: 123978204 kB MemAvailable: 123853048 kB Buffers: 21696 kB Cached: 704828 kB SwapFree: 16629696 kB 
+Node 0, zone   Normal  21690  29516  25433  27925  22641  19656  16474  13426  10937   8744   6012   3169   1276    184 
+allocstall_normal 27009 compact_stall 355521 compact_fail 217818 
+== after-defrag 2026-11-17T18:13:29Z
+-- head
+MemFree: 115809896 kB MemAvailable: 120629432 kB Buffers: 2299184 kB Cached: 1378624 kB SwapFree: 14144644 kB 
+Node 0, zone   Normal  61361  54889  60335  62094  54934  45508  35424  25888  18555  13123   5607   1228     55      1 
+allocstall_normal 92375 compact_stall 2493801 compact_fail 1760937 
+-- worker
+MemFree: 124118512 kB MemAvailable: 123983200 kB Buffers: 21404 kB Cached: 694860 kB SwapFree: 16629696 kB 
+Node 0, zone   Normal  20151  27807  25498  25326  19513  16427  13551  10846   8801   7866   6095   3578   1442    199 
+allocstall_normal 27009 compact_stall 388852 compact_fail 249759 
+== ready 2026-11-17T18:15:18Z
+-- head
+MemFree: 5563312 kB MemAvailable: 10926572 kB Buffers: 2285536 kB Cached: 3902892 kB SwapFree: 14143756 kB 
+Node 0, zone   Normal   8527  67123  69192  69854   2225   1563   1222    718     82     20      1      0      0      0 
+allocstall_normal 92422 compact_stall 2496073 compact_fail 1761213 
+-- worker
+MemFree: 15512100 kB MemAvailable: 15191704 kB Buffers: 19320 kB Cached: 2347268 kB SwapFree: 16542480 kB 
+Node 0, zone   Normal   2657   3136  30027  28831   9658  19131  13843   8486   2456     49      1      0      0      0 
+allocstall_normal 27063 compact_stall 391868 compact_fail 250467 

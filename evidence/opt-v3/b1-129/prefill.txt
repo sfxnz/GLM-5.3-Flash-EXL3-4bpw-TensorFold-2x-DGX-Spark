@@ -1,0 +1,2 @@
+  target prompt_tok  cached   ttft_s  prefill tok/s
+   32000      32628       0   32.029         1018.7

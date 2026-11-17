@@ -1,0 +1,72 @@
+== sfxnz/GLM-5.3-Flash-EXL3-4bpw, TensorFold 1.2.9, TP=2: spark1 rank 0 (HTTP) + spark2 rank 1
+ok     head spark1 has docker ssh curl rsync hf ip rdma ss free stat
+ok     ssh spark2; it has docker rsync ip rdma ss free stat
+ok     spark1 enp1s0f1np1 up at 10.100.8.1
+ok     spark1 RoCE HCAs ACTIVE: rocep1s0f1 roceP2p1s0f1
+ok     spark1 has no other GPU container
+ok     spark2 enp1s0f1np1 up at 10.100.8.2
+ok     spark2 RoCE HCAs ACTIVE: rocep1s0f1 roceP2p1s0f1
+ok     spark2 has no other GPU container
+ok     image tf-glm53:1.2.9 on head: sha256:1035c562f353448497c4d478d55703623cfcc550c826e0ca4c8aa7125fef99de, TensorFold archive sha256 91e90c489bef
+ok     image tf-glm53:1.2.9 on spark2: same id
+ok     head snapshot complete: 120 shards, 175642102880 bytes in /home/sfxnz/.cache/huggingface/hub/models--sfxnz--GLM-5.3-Flash-EXL3-4bpw/snapshots/d75e26a4fedfdb0e9a7d2422afd9cdba926ca7e6
+ok     spark2 snapshot complete
+ok     spark1 ports 8000 29583 29584 free
+ok     spark2 ports 8000 29583 29584 free
+ok     spark1 MemAvailable 114.1 GiB >= 109 GiB
+ok     spark2 MemAvailable 118.1 GiB >= 109 GiB
+...    start rank 1 on spark2
+...    start rank 0 on spark1
+...    wait for /health (about 2 min once the weights sit in page cache; up to 1200s)
+       33s
+       60s
+       92s
+error: rank 1 exited
+--- rank 0 (spark1), last 40 lines
+info: rank 0: liveness lines from 1 ranks on port 29584
+info: glm kv selection: pool pages; TF_KV_PAGES=auto (default); rank 0 of 2; cache bf16
+info: p2p: rank 0 of 2: NCCL's init log is at /tmp/tf-p2p-SSrGLH/nccl.log until startup diagnostics finish; if this rank stops before then, that file holds NCCL's last lines
+info: rank 0 startup: entering NCCL init
+info: rank 0: NCCL id cc1281aa sent
+info: rank 0 startup: entering NCCL init (2 ranks, id cc1281aa, NCCL 2.30.7, CUDA device 0 000F:01:00.0)
+info: rank 0 startup: NCCL init done in 1530 ms
+info: p2p: rank 0 of 2: GPU 0 NVIDIA GB10 (0000000F:01:00.0); driver 580.178.04, CUDA driver API 13.0, NCCL 2.30.7
+info: p2p: peer access: TensorFold enables none itself (no cuCtxEnablePeerAccess); NCCL sets up its own peers
+info: p2p: NCCL transport (this rank's connections): rank 1 NET/IB (128 connections)
+info: rank 0 startup: entering peer warm-up
+info: rank 0 startup: entering weights
+info: checkpoint digest: 0.0 GiB read in 0.1 s, 120/120 cached files
+info: weights: 16 readers read 156.4 GiB ahead of the loader
+info: glm: 290 linears packed (8/8 bits), 3.80 GiB freed
+info: TF_GLM_L2PF: 134 rows, 1066 MiB a decode window, 2 CTAs a site, the gathers' sites at 150 GB/s (0: unpaced)
+info: glm: a prompt chunk's exchanges in 3 row pieces
+info: checkpoint digest: 2.2 GiB read in 5.1 s, 0/1 cached files
+info: dflash2: drafter from /home/sfxnz/.cache/huggingface/hub/models--incoai--GLM-5.3-Flash-DFlash2/snapshots/6cc6c481eee930a5139619ed919f78726371adbc (Apache-2.0), linears at 4 bits, 0.57 GiB on the device
+info: RoCE all-gather: 2 ranks, 2 HCA(s), shards up to 4096 KiB by RDMA writes
+info: [tensorfold] glm: rank 0 of 2 sums through the group collective (RoCE gathers on)
+tensorfold: the CUDA memory budget fits no stream beside the model: one at a 1048576-token window takes 12.76 GiB of KV pages, and the budget leaves 11.52 GiB
+--- rank 1 (spark2), last 40 lines
+info: rank 1: liveness line to rank 0 connected after 12 tries
+info: glm kv selection: pool pages; TF_KV_PAGES=auto (default); rank 1 of 2; cache bf16
+info: p2p: rank 1 of 2: NCCL's init log is at /tmp/tf-p2p-3G7swM/nccl.log until startup diagnostics finish; if this rank stops before then, that file holds NCCL's last lines
+info: rank 1 startup: entering NCCL init
+info: rank 1: NCCL id cc1281aa taken
+info: rank 1 startup: entering NCCL init (2 ranks, id cc1281aa, NCCL 2.30.7, CUDA device 0 000F:01:00.0)
+info: rank 1 startup: NCCL init done in 1523 ms
+info: p2p: rank 1 of 2: GPU 0 NVIDIA GB10 (0000000F:01:00.0); driver 580.178.04, CUDA driver API 13.0, NCCL 2.30.7
+info: p2p: peer access: TensorFold enables none itself (no cuCtxEnablePeerAccess); NCCL sets up its own peers
+info: p2p: NCCL transport (this rank's connections): rank 0 NET/IB (128 connections)
+info: rank 1 startup: entering peer warm-up
+info: rank 1 startup: entering weights
+info: checkpoint digest: 0.0 GiB read in 0.1 s, 120/120 cached files
+info: weights: 16 readers read 156.4 GiB ahead of the loader
+info: glm: 290 linears packed (8/8 bits), 3.80 GiB freed
+info: TF_GLM_L2PF: 134 rows, 1066 MiB a decode window, 2 CTAs a site, the gathers' sites at 150 GB/s (0: unpaced)
+info: checkpoint digest: 2.2 GiB read in 4.9 s, 0/1 cached files
+info: dflash2: drafter from /home/sfxnz/.cache/huggingface/hub/models--incoai--GLM-5.3-Flash-DFlash2/snapshots/6cc6c481eee930a5139619ed919f78726371adbc (Apache-2.0), linears at 4 bits, 0.57 GiB on the device
+info: RoCE all-gather: 2 ranks, 2 HCA(s), shards up to 4096 KiB by RDMA writes
+info: [tensorfold] glm: rank 1 of 2 sums through the group collective (RoCE gathers on)
+info: rank 1 startup: ready to follow rank 0
+info: rank 1: rank 0 ended; leaving
+stopped and removed tf-glm53-rank0 on spark1
+stopped and removed tf-glm53-rank1 on spark2

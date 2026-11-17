@@ -1,0 +1,116 @@
+{
+  "settings": {
+    "url": "http://127.0.0.1:8000",
+    "model": "glm-5.3-flash",
+    "concurrency": [
+      1
+    ],
+    "runs": 4,
+    "warmup": 1,
+    "max_tokens": 512,
+    "temperature": 0.0,
+    "thinking": false,
+    "ignore_eos": true,
+    "started": "2026-11-17T18:39:34Z"
+  },
+  "runs": [
+    {
+      "concurrency": 1,
+      "wall_s": 14.408,
+      "errors": 0,
+      "aggregate_tok_s": 35.54,
+      "streams": [
+        {
+          "ttft_s": 0.175,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 35.91,
+          "wall_s": 14.407,
+          "speculative": {
+            "rounds": 211,
+            "drafted": 661,
+            "accepted": 300,
+            "acceptance_rate": 0.45385779122541603,
+            "tokens_per_round": 2.4265402843601898
+          }
+        }
+      ]
+    },
+    {
+      "concurrency": 1,
+      "wall_s": 14.464,
+      "errors": 0,
+      "aggregate_tok_s": 35.4,
+      "streams": [
+        {
+          "ttft_s": 0.18,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 35.78,
+          "wall_s": 14.463,
+          "speculative": {
+            "rounds": 211,
+            "drafted": 668,
+            "accepted": 300,
+            "acceptance_rate": 0.4491017964071856,
+            "tokens_per_round": 2.4265402843601898
+          }
+        }
+      ]
+    },
+    {
+      "concurrency": 1,
+      "wall_s": 14.273,
+      "errors": 0,
+      "aggregate_tok_s": 35.87,
+      "streams": [
+        {
+          "ttft_s": 0.175,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 36.25,
+          "wall_s": 14.272,
+          "speculative": {
+            "rounds": 208,
+            "drafted": 654,
+            "accepted": 303,
+            "acceptance_rate": 0.463302752293578,
+            "tokens_per_round": 2.4615384615384617
+          }
+        }
+      ]
+    },
+    {
+      "concurrency": 1,
+      "wall_s": 14.385,
+      "errors": 0,
+      "aggregate_tok_s": 35.59,
+      "streams": [
+        {
+          "ttft_s": 0.178,
+          "tokens": 512,
+          "tokens_from": "usage",
+          "decode_tok_s": 35.97,
+          "wall_s": 14.384,
+          "speculative": {
+            "rounds": 208,
+            "drafted": 659,
+            "accepted": 303,
+            "acceptance_rate": 0.4597875569044006,
+            "tokens_per_round": 2.4615384615384617
+          }
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "concurrency": 1,
+      "runs": 4,
+      "errors": 0,
+      "median_ttft_s": 0.176,
+      "median_decode_tok_s": 35.94,
+      "median_aggregate_tok_s": 35.565
+    }
+  ]
+}

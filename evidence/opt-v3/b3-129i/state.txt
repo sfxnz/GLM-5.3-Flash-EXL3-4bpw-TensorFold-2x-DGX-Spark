@@ -1,0 +1,4 @@
+2026-11-17T18:32:41Z start head load 9.10 9.75 8.01 hot 53200 gpu 49,9.69W avail 10.8 | worker 0.98 2.54 2.54 45800 15.8
+other containers on head: none
+2026-11-17T18:40:46Z after-bench head load 7.41 10.83 10.10 hot 83700 gpu 63,34.07W avail 4.5 | worker 2.07 2.35 2.47 67600 15.8
+2026-11-17T18:41:40Z after-prefill head load 8.69 10.61 10.07 hot 83800 gpu 71,58.90W avail 9.6 | worker 2.02 2.29 2.44 68600 15.8
