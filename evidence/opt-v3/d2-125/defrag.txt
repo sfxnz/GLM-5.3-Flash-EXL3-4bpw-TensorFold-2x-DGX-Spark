@@ -1,0 +1,4 @@
+-- head
+defrag: faulted 106.1 GiB in 24.2 s, 60.3 GiB of it as huge pages; free in blocks >= 2 MiB: 53.3 -> 62.9 GiB of 111.7 GiB free (was 108.1)
+-- worker
+defrag: faulted 116.0 GiB in 10.2 s, 94.5 GiB of it as huge pages; free in blocks >= 2 MiB: 90.4 -> 96.1 GiB of 118.1 GiB free (was 118.0)

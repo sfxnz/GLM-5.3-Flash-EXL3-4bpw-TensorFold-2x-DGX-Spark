@@ -26,7 +26,7 @@ Every number below comes from a file under `evidence/`.
 | Quality | the same logprobs as the 1.2.2 default on all 178,793 tokens of `nll-corpus-v1` | `evidence/knobs/v2-default/nll.txt`, `v125-default/nll-vs-122.txt` |
 | MTP acceptance | 0.61 at 1 stream, 0.43 at 4 and 8 | `evidence/knobs/v2-default/bench.json` |
 | `tests/smoke.py` | 10 of 10, and 11 of 11 with an API key | `evidence/knobs/v2-default/smoke.txt`, `v125-final-keyed/smoke.txt` |
-| Load time after the first boot | `ready after 145s` | `evidence/knobs/v2-default/run.txt` |
+| Load time after the first boot | `ready after 97s` to `107s` on eight boots (145 to 151 s before the engine's cache volume) | `evidence/opt-v3/boots.tsv`, `evidence/knobs/v2-default/run.txt` |
 
 Rates are aggregate tok/s, medians of 5 runs of 512 tokens after 1 warmup run, thinking off. The two boots differ by up to 15% at 8 streams. The head ran other users' jobs during the slower one. The 1.2.2 default measured 33.8, 45.5 and 58.8 on Nov 5, so the speed is the same within what our boots can resolve (see [Speed knobs](#speed-knobs)). What changed is the agent experience. Follow-up turns resume from kept state, tool calls stream, and `/v1/messages` and optional keys are new.
 
@@ -52,11 +52,11 @@ VALIDATE_ONLY=1 ./run.sh   # read-only: every check, both docker argvs, exit 1 i
 3. Copies the image to the worker with `docker save | ssh docker load` over the direct link when the two image IDs differ, then checks that they match.
 4. Downloads the pack at the pinned revision with `hf download` into `HF_CACHE` on the head, and checks the shard count and total bytes. The pack is 175,642,102,880 bytes in 120 shards.
 5. Copies the snapshot to the worker with `rsync -aL` over the direct link when the worker's copy is incomplete, and checks it again there.
-6. Checks the ports and the memory gate, starts rank 1 on the worker, then rank 0 on the head, and waits for `/health`.
+6. Checks the ports and the memory gate, starts rank 1 on the worker, then rank 0 on the head, and waits for `/health`. Both ranks mount the docker volume `tf-glm53-cache` (`ENGINE_CACHE`), where the engine keeps the sha256 of every shard.
 
-When `/health` answers, `run.sh` prints rank 0's startup lines and the endpoint. From a fresh clone, with nothing cached, `./run.sh` took 34 min 57 s: the HF download, the copy to the worker and the load (`evidence/run/fresh-clone/run.txt`). Later boots take about 2.5 min.
+When `/health` answers, `run.sh` prints rank 0's startup lines and the endpoint. From a fresh clone, with nothing cached, `./run.sh` took 34 min 57 s: the HF download, the copy to the worker and the load (`evidence/run/fresh-clone/run.txt`). The first boot with the volume hashes the pack, 163.6 GiB in 50 s on each rank, and was ready after 151 s. The eight boots after it read the hashes back in 0.1 s and were ready after 97 to 107 s (`evidence/opt-v3/boots.tsv`, and each run's `boot.log`). `docker volume rm tf-glm53-cache` on each node drops it.
 
-**Restart once after the first download.** On that first boot, 8 streams ran at 36.8 to 41.3 tok/s aggregate instead of about 59, while 1 stream ran at full speed. A plain `./stop.sh && ./run.sh` brought it to 59.7 (`evidence/run/fresh-clone/bench-first-boot.json`, `first-boot-c8-rerun.txt`, `bench-after-restart.json`). We saw this once, on a boot that followed 176 GB of new writes on both nodes, and have not traced the cause. The worker's memory-compaction thread `kcompactd` was busy during the slow runs.
+**Restart once after the first download.** On that first boot, 8 streams ran at 36.8 to 41.3 tok/s aggregate instead of about 59, while 1 stream ran at full speed. A plain `./stop.sh && ./run.sh` brought it to 59.7 (`evidence/run/fresh-clone/bench-first-boot.json`, `first-boot-c8-rerun.txt`, `bench-after-restart.json`). We saw this once, on a boot that followed 176 GB of new writes on both nodes, and have not traced the cause. The worker's memory-compaction thread `kcompactd` was busy during the slow runs. On Nov 17 we tried to bring it back and could not. A boot on top of 9.4 GiB of stale page cache ran 8 streams at 59.7 tok/s while the head was quiet, and at 39.4 to 55.5 while other work held 7 to 8 of the head's cores (`evidence/opt-v3/p1-125/gated2.txt`). Compacting memory before the load changed nothing we could measure (`evidence/opt-v3/n1-125/`, `d3-125/`). So check what else the head is running before you restart.
 
 To stop:
 
@@ -116,6 +116,8 @@ If both ranks already run and `/health` answers, `run.sh` prints the endpoint an
 | `PROMPT_CACHE_GIB` | empty | `--prompt-cache-gib`. Empty leaves the split to the engine. See [Capacity](#capacity-one-shared-pool-with-kept-conversations). |
 | `VIDEO_TOKENS` | `64` | `--vision-video-tokens`, the rows each stream sets aside for video. The engine's default is 16,384, but the image cannot decode video. |
 | `INDEX_CUDA` | `0` | `TF_GLM_INDEX_CUDA`. `1` was measured slower on a 524k prompt and is not the default. |
+| `ENGINE_CACHE` | `tf-glm53-cache` | A docker volume on each node, mounted at `/root/.cache/tensorfold`. The engine keeps the shards' sha256 there, so later boots skip 50 s of hashing. Empty mounts nothing. |
+| `EXTRA_ENV`, `EXTRA_ARGS` | empty | For trials: more engine variables (`VAR=VALUE`, space-separated) and more serve flags, the same on both ranks. |
 | `API_KEY_FILE` | empty | `--api-key-file`. An absolute path to a mode-600 key file at the same path on both nodes. Empty serves without keys. |
 | `WORKER` | `spark2` | The worker's ssh name. |
 | `IFACE` | `enp1s0f1np1` | The direct-link interface. NCCL binds to it. |
@@ -128,7 +130,7 @@ If both ranks already run and `/health` answers, `run.sh` prints the endpoint an
 
 `VALIDATE_ONLY=1 ./run.sh` runs every check without writing anything. It prints the config, each check as `ok` or `REFUSE`, each action it would take as `WOULD`, and both ranks' full `docker run` argvs. It exits 1 if `run.sh` would refuse.
 
-Both ranks get the same serve argv from one function, `rank_argv` in `run.sh`. Only `TF_GLM_RANK` and the container name differ, because the ranks compare their settings at startup and refuse to serve on a mismatch. The serve flags are `--context`, `--parallel`, `--vision`, `--vision-video-tokens`, `--name`, `--host`, `--port` and `--no-update-check`, plus `--prompt-cache-gib` and `--api-key-file` when their variables are set. The engine variables are the NCCL and RoCE ones plus `TF_GLM_DENSE_BITS`, `TF_GLM_HEAD_BITS`, `TENSORFOLD_MEMORY_RESERVE_GIB`, `TF_GLM_INDEX_CUDA` and `TF_KV_SHARE`. The engine's own defaults set the rest. They are BF16 KV pages (`cache bf16` in `evidence/knobs/d8h8-p8-1m/boot.log`), thinking on (`evidence/run/smoke-final.txt`, check `models`), MTP drafts on, and sampling at temperature 1.0 and top_p 0.95 (`evidence/run/boot-final.txt`).
+Both ranks get the same serve argv from one function, `rank_argv` in `run.sh`. Only `TF_GLM_RANK` and the container name differ, because the ranks compare their settings at startup and refuse to serve on a mismatch. The serve flags are `--context`, `--parallel`, `--vision`, `--vision-video-tokens`, `--name`, `--host`, `--port` and `--no-update-check`, plus `--prompt-cache-gib`, `--api-key-file` and the words of `EXTRA_ARGS` when their variables are set. The engine variables are the NCCL and RoCE ones plus `TF_GLM_DENSE_BITS`, `TF_GLM_HEAD_BITS`, `TENSORFOLD_MEMORY_RESERVE_GIB`, `TF_GLM_INDEX_CUDA` and `TF_KV_SHARE`. The engine's own defaults set the rest. They are BF16 KV pages (`cache bf16` in `evidence/knobs/d8h8-p8-1m/boot.log`), thinking on (`evidence/run/smoke-final.txt`, check `models`), MTP drafts on, and sampling at temperature 1.0 and top_p 0.95 (`evidence/run/boot-final.txt`).
 
 ## API
 
@@ -244,7 +246,7 @@ prompts in passes of up to 2048 rows, 16 kept states' slots (2.8 GiB) and the pr
 
 - The pool is 2,315 pages of 512 rows on that boot, which is 1,185,280 tokens, in 14.41 GiB on each rank. The engine sizes it from the memory free at load, so other boots got 2,117 to 2,276 pages (`evidence/knobs/v125-share16/boot.log`, `v125-final-keyed/boot.log`). The 1M window always fits first.
 - That is 13,056 bytes a token on each rank. TP=2 does not halve it, because each rank holds the whole MLA latent (`evidence/decisions.tsv`, row `scope` 15:56:30).
-- Each of the 16 kept states needs a slot of 175 MiB beside its pages. If a boot has less room, the startup line names fewer slots (`N of TF_KV_SHARE=16 kept states' slots`) and the `--prompt-cache-gib` that would hold all 16.
+- Each of the 16 kept states needs a slot of 175 MiB beside its pages. If a boot has less room, the startup line names fewer slots (`N of TF_KV_SHARE=16 kept states' slots`) and the `--prompt-cache-gib` that would hold all 16. `run.sh` prints the engine's warning with the count when the pair is ready. On Nov 17 the head ran other work, the memory left at load was 15.6 to 18.1 GiB, and nine boots kept 7, 8, 12, 13, 13 and four times 16 states (`evidence/opt-v3/boots.tsv`).
 - When requests together need more than the pool, they wait for pages. A busy pool can drop an idle conversation's kept state, and its next turn then reads its prompt again. The engine warns at startup that with fewer than 4 kept states a stream, `live streams evict each other's before a resume`, and suggests `KV_SHARE=32` with `--prompt-cache-gib 6`. In our 8-client run no state was dropped. That does not fit beside the 1M window, so the recipe keeps 16. To keep more conversations, lower `CONTEXT` and raise both.
 - Three concurrent prompts of 416,767 tokens, 1.25M together, all came back correct on 1.2.2, finishing at 459 s, 854 s and 1,208 s (`evidence/run/pool-overcommit/`).
 - Host MemAvailable stayed at 8.8 GiB or more on the head and 12.9 GiB on the worker during the NLL run, the smoke run and the 1M needle on the default (`evidence/knobs/v2-default/memavail.txt`). During the 8-agent run it fell to 8.4 GiB on the head, which was also running another user's jobs, and stayed at 14.0 GiB on the worker (`evidence/knobs/v125-share16/memavail.txt`).
@@ -293,6 +295,39 @@ On 1.2.5, each row adds to the one above it. NLL is against the 1.2.5 default's 
 Speeds are aggregate tok/s, medians of 5 runs of 512 tokens with thinking off (`tools/bench.py`; the 1.2.5 runs after 1 warmup run). Each row is one boot unless it lists two.
 
 The 1.2.5 runs shared the head with another user's jobs, at load averages of 2 to 11 on 20 cores. Even the 1.2.2 control reached only 50.9 tok/s at 8 streams that day, against 58.8 on Nov 5. So compare 1.2.5 rows with the same-day control, not with the 1.2.2 table. One boot cannot resolve differences under about 5% at 1 stream or about 10% at 4 and 8. By that rule, 1.2.5 matches 1.2.2 at 1 stream, and the 4- and 8-stream gaps are inconclusive. Both HCAs measured 58.8 and 51.7 at 8 streams on two boots, against 46.4 and 49.4 with one. That is not worse, and we do not claim it is faster. Per-run numbers, ranges and boot logs are in `evidence/knobs/<config>/` and `evidence/bench/`. At 4 streams the default's range (44.6 to 48.8) overlaps the baseline's (39.7 to 45.8), so call that gain small.
+
+## What limits the speed
+
+On Nov 17 we worked out what the two GB10s allow and looked for the gap. The arithmetic is in `evidence/opt-v3/ceilings.md`, the runs in `evidence/opt-v3/<run>/`, and the scripts that made them in `evidence/opt-v3/harness/`.
+
+| | Measured on the default | Bound | Share of the bound |
+|---|---|---|---|
+| A decode round, 1 stream | 52 to 56 ms | 44 ms: 9.98 GB of weights read on each rank at 225 GB/s | 79 to 85% |
+| A decode round, 8 streams | 281 to 289 ms | 220 ms: 49.6 GB on each rank | 76 to 78% |
+| Cold prefill | 1,062 to 1,092 tok/s | about 2,950 tok/s: 32.2 GFLOP a token, at half of two GPUs' 95 TFLOPS | 37% |
+
+The 225 GB/s is a device copy and the 95 TFLOPS a BF16 matrix product, both measured on the head with the pair stopped (`evidence/opt-v3/hw-spark1.txt`). Both nodes lock the GPU clock at 2,200 MHz of 3,003 (`nvidia-smi -lgc 0,2200`, the workaround for GB10 power-offs), and every number in this README was measured under that lock.
+
+Decode is bound by memory bandwidth. A round reads the 8-bit dense layers once, and 8 of 288 experts in each of 42 layers for every row it verifies. One stream runs within 15 to 21% of that bound, so no setting makes sampled prose much faster than its 34 to 35 tok/s. Text whose drafts are kept more often already runs faster on the same settings: 38.5 and 40.1 tok/s for sampled code, 44.9 and 45.3 for greedy code, on two boots (`evidence/opt-v3/e1-125/gated.json`, `e5-125/gated.json`; `tools/bench.py --prompts code`). Prefill is the wide gap, and it is the engine's kernels, not a setting.
+
+What we tried on the 1.2.5 engine:
+
+| Change | Measured | Verdict |
+|---|---|---|
+| The engine's cache in a docker volume (`ENGINE_CACHE`) | ready after 97 to 107 s on eight boots, against 151 s on the boot that hashed the pack | **the default** |
+| Faulting free memory in as huge pages before the load, three boots | 35.5, 35.5 and 34.7 tok/s at 1 stream and 52.0, 53.6 and 59.4 at 8, against 34.3 and 58.5 on a boot without it | not adopted: no gain outside the head's noise |
+| A boot on top of 9.4 GiB of stale page cache | 59.7 tok/s at 8 streams and 1,083 tok/s on a cold 32k prompt, the same as a clean boot | no effect, so `run.sh` does not manage the page cache |
+
+(`evidence/opt-v3/boots.tsv`; `c1-125-defrag/`, `d2-125/`, `d3-125/` and `n1-125/`, each with `bench.txt`; `p1-125/gated2.txt`.)
+
+**A busy head moves the numbers more than any of this.** The head also ran other work that day, between 0.4 and 18 of its 20 cores. The harness tagged every run with the cores other processes used while it ran:
+
+| Other work on the head | Greedy prose, 1 stream | Greedy code, 1 stream | Sampled prose, 8 streams | Cold 32k prompt |
+|---|---|---|---|---|
+| under 6 cores, no swapping | 35.3 to 36.4 tok/s | 44.5 to 45.5 | 56.2 to 59.7 | 1,062 to 1,083 tok/s |
+| 6 to 15 cores, or pages swapped out | 23.0 (one run, 13 cores) | 28.7 (one run, 9 cores) | 34.1 to 57.7 | 510 to 1,054 |
+
+(`evidence/opt-v3/p1-125/gated2.txt`, `e1-125/gated.json`, `e5-125/gated.json`; each run carries `other`, `burst` and `swapout`.) The same load takes memory from the pool when the pair starts, which is why a boot kept 7 conversations and another 16 ([Capacity](#capacity-one-shared-pool-with-kept-conversations)). The worker, which ran nothing else, had 13.5 to 16.1 GiB available once the pair was ready, and the head 9.6 to 10.5 (`mem.txt` in each run).
 
 ## Quality
 
@@ -350,7 +385,8 @@ Notes on the method:
 - **`TF_GLM_INDEX_CUDA=1` is not the default.** Its logprobs match, but our one 524k run was slower, not the 9% faster first token in TensorFold's changelog. The head was busy with other jobs during it.
 - **No `max` reasoning effort on the command line.** The native CLI takes `low`, `medium`, `high` and `xhigh`. A per-request `"max"` was not traced (`evidence/research/research-tensorfold-glm.md`, Unknowns).
 - **The archive signature is not checked.** The image build trusts the release archive's sha256. Upstream documents no key for the `.sig` (`evidence/decisions.tsv`, row `image` 13:24:53).
-- **The first boot after a download ran slower at 8 streams.** See [Quick start](#quick-start). Restart once. We saw this on 1.2.2.
+- **The first boot after a download ran slower at 8 streams.** See [Quick start](#quick-start). We saw this once, on 1.2.2, and did not reproduce it.
+- **Other work on the head costs more than any knob gives.** With 7 to 15 of the head's 20 cores busy, 8 streams fell from 59 tok/s to as low as 34, a cold 32k prompt from 1,062 tok/s to as low as 510, and a boot kept 7 conversations instead of 16. One stream held its rate up to about 6 busy cores. See [What limits the speed](#what-limits-the-speed).
 - **If one rank fails, the other stops.** Restart both with `./stop.sh && ./run.sh`.
 
 ## Troubleshooting
@@ -399,22 +435,25 @@ python3 -I quality/test_paired_delta.py <empty dir>     # one pairing and four r
 shellcheck -x -S warning run.sh stop.sh tools/*.sh docker/*.sh
 ```
 
-The unittest suite runs 72 tests (`evidence/run/cpu-tests.txt`).
+The unittest suite runs 79 tests (`evidence/run/cpu-tests.txt`).
 
 **Measuring.** After `./run.sh`:
 
 ```sh
 python3 tests/smoke.py --out evidence/run/smoke.json
 python3 tools/bench.py --concurrency 1,4,8 --runs 5 --warmup 1 --out evidence/run/bench.json
+python3 tools/prefill.py 8000,32000,128000 --out evidence/run/prefill.json
 python3 tools/agents.py --clients 8 --turns 4 --context-tokens 32000 --seed 1 --out evidence/run/agents.json
 python3 tools/needle.py 1000000 --out evidence/run/needle.json
 python3 tools/needle.py 500000 --concurrent 4 --out evidence/run/needles.jsonl
 python3 tools/nll.py capture --label mine --out DIR        # then: tools/nll.py compare A_DIR B_DIR
 ```
 
-`tools/bench.py` streams prose prompts with thinking off and `ignore_eos`. It reports the median stream's decode rate after its first token, the aggregate tokens over each run's wall time, and the TTFT, and it counts errors. `--warmup` runs untimed rounds first, and `--temperature 0` makes the runs greedy.
+`tools/bench.py` streams prose prompts with thinking off and `ignore_eos`; `--prompts code` sends requests for programs instead, whose drafts are kept more often. It reports the median stream's decode rate after its first token, the aggregate tokens over each run's wall time, and the TTFT, and it counts errors. `--warmup` runs untimed rounds first, and `--temperature 0` makes the runs greedy.
 
 `tools/agents.py` measures what an agent sees. For each turn it reports the TTFT, cold or resumed, the decode rate, the cached tokens and any error. Use a new `--seed` for each run, or the engine still holds the last run's documents and turn 1 is not cold. `tools/needle.py --concurrent K` sends K needles at once, each with its own haystack and code.
+
+`tools/prefill.py 8000,32000,128000` times cold prompts: each is new to the engine, and it reports the prompt tokens over the time to the first token. A prompt that comes back with cached tokens does not count.
 
 `tools/knob.sh NAME VAR=VALUE ...` restarts the pair with those overrides and writes `evidence/knobs/NAME/` with the boot logs and the argv. `tools/memwatch.sh FILE` logs MemAvailable on both nodes until you stop it.
 

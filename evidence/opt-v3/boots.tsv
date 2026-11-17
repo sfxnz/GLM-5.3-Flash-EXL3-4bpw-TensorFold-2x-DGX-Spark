@@ -1,0 +1,10 @@
+run	engine	ready_s	digest	budget_gib	pages	kept_of_16	note
+a1-125	1.2.5	151	163.6 GiB read in 50.0 s, 0/120 cached files	17.3	2089	16	
+a2-125	1.2.5	97	0.0 GiB read in 0.1 s, 120/120 cached files	18.1	2226	16	
+c1-125-defrag	1.2.5	97	0.0 GiB read in 0.1 s, 120/120 cached files	18.1	2224	16	
+n1-125	1.2.5	97	0.0 GiB read in 0.1 s, 120/120 cached files	17.3	2101	16	
+d2-125	1.2.5	97	0.0 GiB read in 0.1 s, 120/120 cached files	16.6	2068	13	
+d3-125	1.2.5	97	0.0 GiB read in 0.1 s, 120/120 cached files	16.4	2069	12	
+p1-125	1.2.5	97	0.0 GiB read in 0.1 s, 120/120 cached files	15.6	2081	7	
+e1-125	1.2.5	102	0.0 GiB read in 0.1 s, 120/120 cached files	15.8	2083	8	
+e5-125	1.2.5	107	0.0 GiB read in 0.1 s, 120/120 cached files	16.6	2064	13	
