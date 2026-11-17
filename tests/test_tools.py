@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "tests"))
 import bench  # noqa: E402
 import needle  # noqa: E402
+import prefill  # noqa: E402
 import recipe  # noqa: E402
 from fake_server import FakeServer  # noqa: E402
 
@@ -102,6 +103,17 @@ class BenchTests(unittest.TestCase):
         self.assertEqual([x["runs"] for x in report["summary"]], [1, 1])
         self.assertEqual(report["settings"]["warmup"], 2)
 
+    def test_prompts_code_sends_the_code_prompts(self):
+        for args, want in [([], bench.PROMPTS), (["--prompts", "code"], bench.CODE_PROMPTS)]:
+            with FakeServer() as s, tempfile.TemporaryDirectory() as d, redirect_stdout(io.StringIO()):
+                rc = bench.main(["--concurrency", "2", "--runs", "1", "--warmup", "0", "--max-tokens", "16", "--url", s.url,
+                                 "--out", f"{d}/bench.json", *args])
+                report = json.loads(Path(f"{d}/bench.json").read_text())
+                sent = {b["messages"][0]["content"] for b in s.requests}
+            self.assertEqual(rc, 0)
+            self.assertEqual(sent, set(want[:2]))
+            self.assertEqual(report["settings"]["prompts"], args[-1] if args else "prose")
+
     def test_temperature_is_sent_only_when_set(self):
         for args, sent_temps, recorded in [([], set(), None), (["--temperature", "0"], {0.0}, 0.0)]:
             with FakeServer() as s, tempfile.TemporaryDirectory() as d, redirect_stdout(io.StringIO()):
@@ -117,6 +129,36 @@ class BenchTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             rc = bench.main(["--concurrency", "2", "--runs", "1", "--url", "http://127.0.0.1:9"])
         self.assertEqual(rc, 1)
+
+
+class PrefillTests(unittest.TestCase):
+    def run_prefill(self, s, *args):
+        with tempfile.TemporaryDirectory() as d, redirect_stdout(io.StringIO()):
+            rc = prefill.main([*args, "--url", s.url, "--out", f"{d}/prefill.json"])
+            return rc, json.loads(Path(f"{d}/prefill.json").read_text())
+
+    def test_each_prompt_is_new_to_the_server_and_near_its_target(self):
+        with FakeServer(window=200000, prefix_cache=True) as s:
+            rc, report = self.run_prefill(s, "4000,12000", "--runs", "2", "--seed", "5")
+        self.assertEqual(rc, 0)
+        self.assertEqual([x["cold_runs"] for x in report["summary"]], [2, 2])
+        for run in report["runs"]:
+            self.assertTrue(run["cold"])
+            self.assertLessEqual(abs(run["prompt_tokens"] - run["target"]), run["target"] // 20)
+
+    def test_a_prompt_the_server_already_holds_is_not_counted_cold(self):
+        with FakeServer(window=200000, prefix_cache=True) as s:
+            self.run_prefill(s, "4000", "--seed", "5")
+            rc, report = self.run_prefill(s, "4000", "--seed", "5")
+        self.assertEqual(rc, 1)
+        self.assertFalse(report["runs"][0]["cold"])
+        self.assertEqual(report["summary"][0]["cold_runs"], 0)
+
+    def test_a_failed_request_fails_the_run(self):
+        with FakeServer(window=12000) as s:
+            rc, report = self.run_prefill(s, "20000", "--seed", "5")
+        self.assertEqual(rc, 1)
+        self.assertIn("error", report["runs"][0])
 
 
 class RecipeSettingsTests(unittest.TestCase):
