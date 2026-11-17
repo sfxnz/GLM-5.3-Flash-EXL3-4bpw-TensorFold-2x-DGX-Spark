@@ -1,0 +1,25 @@
+== sfxnz/GLM-5.3-Flash-EXL3-4bpw, TensorFold 1.2.9, TP=2: spark1 rank 0 (HTTP) + spark2 rank 1
+ok     head spark1 has docker ssh curl rsync hf ip rdma ss free stat
+ok     ssh spark2; it has docker rsync ip rdma ss free stat
+ok     spark1 enp1s0f1np1 up at 10.100.8.1
+ok     spark1 RoCE HCAs ACTIVE: rocep1s0f1 roceP2p1s0f1
+ok     spark1 has no other GPU container
+ok     spark2 enp1s0f1np1 up at 10.100.8.2
+ok     spark2 RoCE HCAs ACTIVE: rocep1s0f1 roceP2p1s0f1
+ok     spark2 has no other GPU container
+ok     image tf-glm53:1.2.9 on head: sha256:1035c562f353448497c4d478d55703623cfcc550c826e0ca4c8aa7125fef99de, TensorFold archive sha256 91e90c489bef
+ok     image tf-glm53:1.2.9 on spark2: same id
+ok     head snapshot complete: 120 shards, 175642102880 bytes in /home/sfxnz/.cache/huggingface/hub/models--sfxnz--GLM-5.3-Flash-EXL3-4bpw/snapshots/d75e26a4fedfdb0e9a7d2422afd9cdba926ca7e6
+ok     spark2 snapshot complete
+ok     spark1 ports 8000 29583 29584 free
+ok     spark2 ports 8000 29583 29584 free
+ok     spark2 MemAvailable 118.2 GiB >= 109 GiB
+--- free -h on spark1
+               total        used        free      shared  buff/cache   available
+Mem:           121Gi        14Gi       104Gi       236Ki       3.9Gi       107Gi
+Swap:           15Gi       3.1Gi        12Gi
+--- free -h on spark2
+               total        used        free      shared  buff/cache   available
+Mem:           121Gi       3.5Gi       118Gi       4.1Mi       1.1Gi       118Gi
+Swap:           15Gi       164Mi        15Gi
+error: MemAvailable below the 109 GiB gate: spark1 107.7 GiB. Free memory first (no sudo, no cache drops), or set FORCE=1

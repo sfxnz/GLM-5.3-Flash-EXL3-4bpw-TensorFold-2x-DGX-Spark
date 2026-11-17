@@ -1,0 +1,30 @@
+{
+  "settings": {
+    "url": "http://127.0.0.1:8000",
+    "model": "glm-5.3-flash",
+    "seed": 1794938185,
+    "runs": 1,
+    "thinking": false,
+    "started": "2026-11-17T17:56:41Z"
+  },
+  "runs": [
+    {
+      "target": 32000,
+      "run": 0,
+      "prompt_tokens": 32628,
+      "cached_tokens": 0,
+      "cold": true,
+      "ttft_s": 32.029,
+      "prefill_tok_s": 1018.7
+    }
+  ],
+  "summary": [
+    {
+      "target": 32000,
+      "cold_runs": 1,
+      "median_prompt_tokens": 32628,
+      "median_ttft_s": 32.029,
+      "median_prefill_tok_s": 1018.7
+    }
+  ]
+}

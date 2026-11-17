@@ -1,0 +1,9 @@
+c1 {"tok_s": 34.19, "errors": 0, "ttft": 0.201, "ms_round": 54.4, "tok_round": 1.88, "accept": 0.605, "other": 2.38, "burst": 2.82, "swapout": 0, "mhz": 2177, "gpu_c": 54, "waited": 15, "clean": false}
+c1 {"tok_s": 31.59, "errors": 0, "ttft": 0.198, "ms_round": 51.9, "tok_round": 1.66, "accept": 0.577, "other": 2.59, "burst": 3.07, "swapout": 0, "mhz": 2184, "gpu_c": 54, "waited": 85, "clean": false}
+c1 {"tok_s": 34.99, "errors": 0, "ttft": 0.202, "ms_round": 55.8, "tok_round": 1.98, "accept": 0.595, "other": 0.9, "burst": 1.21, "swapout": 0, "mhz": 2177, "gpu_c": 55, "waited": 35, "clean": true}
+c1 {"tok_s": 35.41, "errors": 0, "ttft": 0.189, "ms_round": 54.6, "tok_round": 1.95, "accept": 0.622, "other": 1.4, "burst": 1.68, "swapout": 0, "mhz": 2184, "gpu_c": 53, "waited": 45, "clean": false}
+c1 {"tok_s": 34.59, "errors": 0, "ttft": 0.201, "ms_round": 55.2, "tok_round": 1.93, "accept": 0.624, "other": 2.45, "burst": 2.6, "swapout": 0, "mhz": 2177, "gpu_c": 55, "waited": 5, "clean": false}
+c1 {"tok_s": 35.38, "errors": 0, "ttft": 0.206, "ms_round": 57.6, "tok_round": 2.06, "accept": 0.628, "other": 6.19, "burst": 6.86, "swapout": 0, "mhz": 2177, "gpu_c": 58, "waited": 121, "clean": false}
+c1 {"tok_s": 33.46, "errors": 0, "ttft": 0.201, "ms_round": 56.7, "tok_round": 1.92, "accept": 0.587, "other": 6.0, "burst": 8.49, "swapout": 4794, "mhz": 2177, "gpu_c": 60, "waited": 121, "clean": false}
+c1 {"tok_s": 36.44, "errors": 0, "ttft": 0.205, "ms_round": 56.9, "tok_round": 2.1, "accept": 0.633, "other": 3.68, "burst": 3.74, "swapout": 0, "mhz": 2180, "gpu_c": 54, "waited": 120, "clean": false}
+c1 {"tok_s": 34.56, "errors": 0, "ttft": 0.202, "ms_round": 55.2, "tok_round": 1.93, "accept": 0.62, "other": 6.1, "burst": 6.48, "swapout": 0, "mhz": 2177, "gpu_c": 56, "waited": 121, "clean": false}
