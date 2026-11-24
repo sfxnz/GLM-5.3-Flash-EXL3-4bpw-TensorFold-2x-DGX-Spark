@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TR = "a" * 40
 MODEL = "sfxnz/GLM-5.3-Flash-EXL3-4bpw"
-TF_SHA = "1a0192b28d6ab6ec2749f3ff25515379dba4895171e781b30f810afc971ae4f8"
+TF_SHA = "c335c44f81d55847a5f81d74a94ac3d09f81bd6688247cff972cf1f63fc18105"
 GIB = 1 << 30
 SIDE_FILES = ["config.json", "generation_config.json", "tokenizer.json", "tokenizer_config.json",
               "processor_config.json", "chat_template.jinja"]
@@ -209,7 +209,7 @@ class ValidateOnly(unittest.TestCase):
             self.assertEqual(e["TF_GLM_INDEX_CUDA"], c["INDEX_CUDA"])
             self.assertEqual(e["TF_KV_SHARE"], c["KV_SHARE"])
             self.assertEqual(flag(argv, "--vision-video-tokens"), c["VIDEO_TOKENS"])
-            self.assertNotIn("--kv-cache", argv)
+            self.assertEqual(flag(argv, "--kv-cache"), "fp8")
             self.assertNotIn("--prompt-cache-gib", argv)
         rc, out = self.pair.run(INDEX_CUDA="1", VIDEO_TOKENS="64", KV_SHARE="16", PROMPT_CACHE_GIB="3")
         self.assertEqual(rc, 0, out)
@@ -329,15 +329,17 @@ class ValidateOnly(unittest.TestCase):
         self.assertEqual(flag(words, "--revision"), TR)
 
     def test_differing_worker_image_plans_a_copy(self):
+        img = conf("IMAGE")["IMAGE"]
         self.pair.node("worker", image=f"sha256:{'2' * 64} {TF_SHA}")
         rc, out = self.pair.run()
-        self.assertIn("WOULD  copy tf-glm53:1.2.5 to spark2", out)
+        self.assertIn(f"WOULD  copy {img} to spark2", out)
         self.assertNotIn("WOULD  build", out)
 
     def test_image_with_another_archive_is_rebuilt(self):
+        img = conf("IMAGE")["IMAGE"]
         self.pair.node("head", image=f"sha256:{'1' * 64} {'0' * 64}")
         rc, out = self.pair.run()
-        self.assertIn("WOULD  build tf-glm53:1.2.5 from docker/", out)
+        self.assertIn(f"WOULD  build {img} from docker/", out)
 
     def test_memory_gate_refuses_and_force_overrides(self):
         self.pair.node("worker", mem=str(100 * GIB))

@@ -1,0 +1,374 @@
+From 9b9ce919515f17ac890b885191fb582b645f3cce Mon Sep 17 00:00:00 2001
+From: ashhart <71890694+ashhart@users.noreply.github.com>
+Date: Sun, 22 Nov 2026 04:04:51 +0000
+Subject: [PATCH 27/39] GLM CUDA: skip unread prefill projections
+
+---
+ zig/glm_prompt_host.zig                       |   8 +-
+ zig/src/families/glm/cuda.zig                 |   1 +
+ zig/src/families/glm/cuda_dsa_block.zig       |  19 ++-
+ zig/src/families/glm/cuda_engine.zig          |   4 +-
+ zig/src/families/glm/cuda_forward.zig         |  10 +-
+ .../families/glm/cuda_forward_head_test.zig   | 110 ++++++++++++++++++
+ zig/src/families/glm/cuda_forward_pair.zig    |   5 +-
+ zig/src/families/glm/cuda_prompt_pair.zig     |   7 +-
+ zig/src/families/glm/cuda_prompt_solo.zig     |   2 +-
+ zig/src/families/glm/cuda_prompts.zig         |   2 +-
+ 10 files changed, 150 insertions(+), 18 deletions(-)
+ create mode 100644 zig/src/families/glm/cuda_forward_head_test.zig
+
+diff --git a/zig/glm_prompt_host.zig b/zig/glm_prompt_host.zig
+index bb44e927d..56337098c 100644
+--- a/zig/glm_prompt_host.zig
++++ b/zig/glm_prompt_host.zig
+@@ -19,6 +19,7 @@ const fw = struct {
+     pub const Rank = struct { w: *u8, st: *State, b: *Buffers, segs: []const Seg = &.{} };
+     pub var observed_ring = false;
+     pub var observed_taps = false;
++    pub var observed_propose: ?bool = null;
+     pub const Forward = struct {
+         d: u8,
+         m: *u8,
+@@ -45,7 +46,11 @@ const fw = struct {
+             for (ids, 0..) |id, i| hidden[i] = @intCast(id);
+             for (f.ranks[0].segs, 0..) |g, i| logits[i] = @intCast(ids[g.row0 + g.rows - 1]);
+         }
+-        pub fn mtp(f: *Forward, _: []const i32, _: []const u64) !void {
++        pub fn mtp(f: *Forward, ids: []const i32, hidden: []const u64) !void {
++            return f.mtpMode(ids, hidden, true);
++        }
++        pub fn mtpMode(f: *Forward, _: []const i32, _: []const u64, propose: bool) !void {
++            observed_propose = propose;
+             const first: *u16 = @ptrFromInt(f.ranks[0].b.fnormed);
+             first.* = 777;
+         }
+@@ -154,6 +159,7 @@ test "GLM prompt workflow: multiple passes, nonzero and reused slots retain the
+     try pass(&e, &.{.{ .slot = 11, .ids = &.{ 12, 13, 14 } }});
+     try t.expectEqual(@as(u16, 41), held(&e, 7));
+     try t.expectEqual(@as(u16, 14), held(&e, 11));
++    try t.expectEqual(false, fw.observed_propose.?);
+ }
+ test "GLM prompt workflow: normal path and batched passes retain the incumbent" {
+     var b: Box = .{};
+diff --git a/zig/src/families/glm/cuda.zig b/zig/src/families/glm/cuda.zig
+index af9ca6812..bcabd29c2 100644
+--- a/zig/src/families/glm/cuda.zig
++++ b/zig/src/families/glm/cuda.zig
+@@ -52,6 +52,7 @@ test {
+     _ = @import("cuda_formats_csf0_test.zig");
+     _ = @import("cuda_tile.zig");
+     _ = @import("cuda_kv8_test.zig");
++    _ = @import("cuda_forward_head_test.zig");
+     _ = kv8_ref;
+     _ = @import("cuda_prof.zig");
+     _ = @import("cuda_load_owner.zig");
+diff --git a/zig/src/families/glm/cuda_dsa_block.zig b/zig/src/families/glm/cuda_dsa_block.zig
+index 188f17e1f..bddaf42ca 100644
+--- a/zig/src/families/glm/cuda_dsa_block.zig
++++ b/zig/src/families/glm/cuda_dsa_block.zig
+@@ -119,20 +119,27 @@ pub fn prepare(set: glue.Set, stream: cuda.Stream, l: Layer, s: Scratch, x: u64,
+ }
+ 
+ pub fn prepareProfile(set: glue.Set, stream: cuda.Stream, l: Layer, s: Scratch, x: u64, x_stride: usize, rows: usize, qi: bool, profile: ?*prof.Prof) !void {
++    return prepareMode(set, stream, l, s, x, x_stride, rows, qi, profile, false);
++}
++
++/// Keys-only commits keep KV and index keys; compact KV skips the unread query projections.
++fn prepareMode(set: glue.Set, stream: cuda.Stream, l: Layer, s: Scratch, x: u64, x_stride: usize, rows: usize, qi: bool, profile: ?*prof.Prof, keys_only: bool) !void {
+     var stamp = prof.span(profile, stream, .replicated_qakva);
+     const width = l.q_lora + l.lw;
+     try projection.matmul(set, stream, l.proj, x, x_stride, s.dp, s.mm_part, rows, width, l.dims, false);
+-    try glue.rmsnorm(set, stream, s.dp, width, l.q_norm, s.qr, l.q_lora, s.xs_qr, l.eps, rows, l.q_lora);
++    if (!keys_only) try glue.rmsnorm(set, stream, s.dp, width, l.q_norm, s.qr, l.q_lora, s.xs_qr, l.eps, rows, l.q_lora);
+     try glue.rmsnorm(set, stream, s.dp + l.q_lora * 2, width, l.kv_norm, s.lat, l.lw, s.xs_lat, l.eps, rows, l.lw);
+     stamp.end();
+     stamp = prof.span(profile, stream, .projections);
+     defer stamp.end();
+-    try projection.matmul(set, stream, l.q_b, s.qr, l.q_lora, s.q, s.mm_part, rows, l.heads * l.qk, l.q_lora, false);
++    if (!keys_only) try projection.matmul(set, stream, l.q_b, s.qr, l.q_lora, s.q, s.mm_part, rows, l.heads * l.qk, l.q_lora, false);
+     const ix = l.index;
+     try projection.matmul(set, stream, ix.kw, x, x_stride, s.ikr, s.mm_part, rows, ix.d + ix.heads, l.dims, false);
+     try glue.router(set, stream, x, x_stride, ix.gate, s.igr, s.router_part, rows, l.dims, ix.d);
+-    try latent.absorbQ(set, stream, s.q, l.wk, s.qa, rows, l.heads, l.qk, l.lw);
+-    if (qi) try projection.matmul(set, stream, ix.qb, s.qr, l.q_lora, s.qi, s.mm_part, rows, ix.heads * ix.d, l.q_lora, false);
++    if (!keys_only) {
++        try latent.absorbQ(set, stream, s.q, l.wk, s.qa, rows, l.heads, l.qk, l.lw);
++        if (qi) try projection.matmul(set, stream, ix.qb, s.qr, l.q_lora, s.qi, s.mm_part, rows, ix.heads * ix.d, l.q_lora, false);
++    }
+ }
+ 
+ fn attendScratch(l: Layer, s: Scratch, r0: usize) Scratch {
+@@ -310,8 +317,8 @@ fn writeKeys(k: Kernels, stream: cuda.Stream, l: Layer, c: Caches, s: Scratch, r
+     stamp.end();
+ }
+ 
+-/// The existing row projections and cache writes, without attention or output projections.
++/// Latent/index cache writes only: query projections and attention are unread on this path.
+ pub fn commit(k: Kernels, stream: cuda.Stream, l: Layer, c: Caches, s: Scratch, x: u64, stride: usize, rows: usize, pos: u64, host_pos: usize) !void {
+-    try prepareProfile(k.set, stream, l, s, x, stride, rows, sparseRows(l, host_pos, rows), k.prof);
++    try prepareMode(k.set, stream, l, s, x, stride, rows, sparseRows(l, host_pos, rows), k.prof, true);
+     try writeKeys(k, stream, l, c, s, rows, pos);
+ }
+diff --git a/zig/src/families/glm/cuda_engine.zig b/zig/src/families/glm/cuda_engine.zig
+index 0435c935c..acd05b69d 100644
+--- a/zig/src/families/glm/cuda_engine.zig
++++ b/zig/src/families/glm/cuda_engine.zig
+@@ -456,7 +456,8 @@ pub const Engine = struct {
+         };
+         stamp.end();
+         if (f.prof) |p| p.mark(e.stream, .gate);
+-        try f.run(as_i32[0..rows]);
++        const last = start + rows == len;
++        try f.runMode(as_i32[0..rows], last);
+         e.index_splits += @intFromBool(split);
+         stamp = prof_mod.span(f.prof, e.stream, .prompt_score);
+         if (e.prompt_logprobs) |p| if (part.len > 1) try prompt_lp.run(e, p, part[1..]);
+@@ -465,7 +466,6 @@ pub const Engine = struct {
+         if (e.drafter) |dr| try dr.prompt(e, e.slot, start, rows, len);
+         stamp.end();
+         stamp = prof_mod.span(f.prof, e.stream, .draw);
+-        const last = start + rows == len;
+         var first: ?u32 = null;
+         if (last) {
+             var t: [1]u32 = undefined;
+diff --git a/zig/src/families/glm/cuda_forward.zig b/zig/src/families/glm/cuda_forward.zig
+index 8d4024af6..5dc2d029c 100644
+--- a/zig/src/families/glm/cuda_forward.zig
++++ b/zig/src/families/glm/cuda_forward.zig
+@@ -380,6 +380,11 @@ pub const Forward = struct {
+ 
+     /// forward.forward of `ids`: logits in b.logits; a prompt chunk's KDA layers committed, a window's at `commit`.
+     pub fn run(f: *const Forward, ids: []const i32) !void {
++        return f.runMode(ids, true);
++    }
++
++    /// The same pass with `lm_head` only when its logits are read; final norms always cover every row.
++    pub fn runMode(f: *const Forward, ids: []const i32, head: bool) !void {
+         const R = ids.len;
+         for (f.ranks) |r| {
+             if (R == 0 or R > r.b.rows) return error.BadWindow;
+@@ -400,7 +405,7 @@ pub const Forward = struct {
+         const pieces = if (f.pieces) |p| (if (f.ranks[0].b.prefill) ranges(R, p.count, &cut) else 0) else 0;
+         // overlap.Overlap.begin: pieced with two pieces or more, and split takes a chunk of one piece too
+         if (pieces > 1 or (pieces == 1 and f.splits(R))) try f.pieced(f.pieces.?, R, cut[0..pieces]) else try f.whole(R);
+-        try f.finish(R);
++        try f.finish(R, head);
+         if (f.prof) |p| p.mark(f.stream, .head);
+     }
+ 
+@@ -444,7 +449,7 @@ pub const Forward = struct {
+     }
+ 
+     /// The final norm and this rank's rows of the head (a prompt buffer's last row only).
+-    pub fn finish(f: *const Forward, R: usize) !void {
++    pub fn finish(f: *const Forward, R: usize, head: bool) !void {
+         prof_mod.context(f.prof, null, null, .chunk);
+         const stamp = prof_mod.span(f.prof, f.stream, .head);
+         defer stamp.end();
+@@ -456,6 +461,7 @@ pub const Forward = struct {
+                 try shared.heads(f, r);
+                 continue;
+             }
++            if (!head) continue;
+             const head_rows: usize = if (b.prefill) 1 else R;
+             const first = if (b.prefill) R - 1 else 0;
+             try projection.matmul(f.set(), f.stream, r.w.head, b.fnormed + first * c.hidden * 2, c.hidden, b.logits, b.kda.mm_part, head_rows, r.w.share.vocab.len(), c.hidden, false);
+diff --git a/zig/src/families/glm/cuda_forward_head_test.zig b/zig/src/families/glm/cuda_forward_head_test.zig
+new file mode 100644
+index 000000000..1be543852
+--- /dev/null
++++ b/zig/src/families/glm/cuda_forward_head_test.zig
+@@ -0,0 +1,110 @@
++//! GLM's final norm and lm_head launch policy without a CUDA device.
++
++const std = @import("std");
++const cuda = @import("cuda");
++const glue = @import("cuda_glue.zig");
++const fw = @import("cuda_forward.zig");
++const weights = @import("cuda_weights.zig");
++const shard = @import("cuda_shard.zig");
++const cfg = @import("config.zig");
++const t = std.testing;
++
++const Seen = struct { id: usize, args: [11]u64 };
++const ids = struct {
++    const norm = fieldId("rmsnorm_4096");
++    const rows = fieldId("bmm_rows");
++    const tile = fieldId("bmm_tile");
++    const tile1 = fieldId("bmm_tile1");
++    const decode = fieldId("bmm_decode");
++    const d32s1 = fieldId("bmm_d32s1");
++    const d32s2 = fieldId("bmm_d32s2");
++    const d32s3 = fieldId("bmm_d32s3");
++    const d64s2 = fieldId("bmm_d64s2");
++};
++
++fn fieldId(comptime name: []const u8) usize {
++    inline for (@typeInfo(glue.Kernels).@"struct".field_names, 1..) |name_, i| {
++        if (comptime std.mem.eql(u8, name_, name)) return i;
++    }
++    unreachable;
++}
++
++const Launch = struct {
++    var n: usize = 0;
++    var seen: [8]Seen = undefined;
++
++    fn run(f: cuda.abi.Function, _: c_uint, _: c_uint, _: c_uint, _: c_uint, _: c_uint, _: c_uint, _: c_uint, _: cuda.abi.Stream, args: ?[*]?*anyopaque, _: ?[*]?*anyopaque) callconv(.c) c_int {
++        const id = @intFromPtr(f);
++        var s: Seen = .{ .id = id, .args = @splat(0) };
++        const sizes: []const u8 = switch (id) {
++            ids.norm => "88888844",
++            ids.rows, ids.tile, ids.tile1 => "888888844",
++            ids.decode, ids.d32s1, ids.d32s2, ids.d32s3, ids.d64s2 => "8888888844",
++            else => "",
++        };
++        for (sizes, 0..) |size, i| {
++            const at = args.?[i].?;
++            s.args[i] = if (size == '8') @as(*const u64, @ptrCast(@alignCast(at))).* else @as(*const u32, @ptrCast(@alignCast(at))).*;
++        }
++        seen[n] = s;
++        n += 1;
++        return 0;
++    }
++};
++
++fn check(prefill: bool, head: bool, rows: usize) !void {
++    var d: cuda.Driver = undefined;
++    d.api.cuLaunchKernel = Launch.run;
++    d.api.cuLaunchKernelEx = @import("cuda_pdl.zig").forwardEx(Launch.run);
++    var kernels: glue.Kernels = undefined;
++    inline for (@typeInfo(glue.Kernels).@"struct".field_names, 1..) |name, i| @field(kernels, name) = .{ .d = &d, .handle = @ptrFromInt(i) };
++    Launch.n = 0;
++
++    const c: cfg.Config = .{};
++    const sh = try shard.Share.of(&c, 0, 1);
++    var w: weights.Weights = .{ .gpa = t.allocator, .config = c, .share = sh, .norm = .{ .bf16 = 0x10_0000 }, .head = .{ .bf16 = 0x20_0000 } };
++    var b: fw.Buffers = undefined;
++    b.prefill = prefill;
++    b.hidden = 0x100_0000;
++    b.fnormed = 0x200_0000;
++    b.fxs = 0x300_0000;
++    b.logits = 0x400_0000;
++    b.kda.mm_part = 0x500_0000;
++    var st: fw.State = undefined;
++    var mods: fw.Modules = undefined;
++    mods.glue = kernels;
++    mods.index = null;
++    mods.tiled = false;
++    mods.packs = null;
++    mods.copy_rows = undefined;
++    mods.dsel = false;
++    mods.dscore = null;
++    mods.mla = null;
++    var one: [1]fw.Rank = .{.{ .w = &w, .st = &st, .b = &b }};
++    const f: fw.Forward = .{ .d = &d, .m = &mods, .stream = .{ .d = &d, .handle = null }, .ranks = &one, .exchange = .local };
++    try f.finish(rows, head);
++
++    const norm = Launch.seen[0];
++    try t.expectEqual(@as(usize, ids.norm), norm.id);
++    try t.expectEqualSlices(u64, &.{ b.hidden, c.hidden, w.norm.bf16, b.fnormed, c.hidden, b.fxs }, norm.args[0..6]);
++    if (!head and prefill) {
++        try t.expectEqual(@as(usize, 1), Launch.n);
++        return;
++    }
++    try t.expectEqual(@as(usize, 2), Launch.n);
++    const lm = Launch.seen[1];
++    try t.expect(lm.id != ids.norm);
++    if (prefill) {
++        const want_rows: u64 = 1;
++        const last = b.fnormed + (rows - 1) * c.hidden * 2;
++        try t.expectEqualSlices(u64, &.{ last, w.head.bf16, b.logits, b.logits, want_rows, c.hidden, sh.vocab.len(), c.hidden }, lm.args[0..8]);
++    } else {
++        try t.expectEqualSlices(u64, &.{ b.fnormed, w.head.bf16, b.logits, rows, c.hidden, sh.vocab.len(), c.hidden }, lm.args[0..7]);
++    }
++}
++
++test "prefill exact: E4 non-final lm_head is unread, final and decode heads keep their rows" {
++    try check(true, false, 128);
++    try check(true, true, 128);
++    try check(false, true, 128);
++}
+diff --git a/zig/src/families/glm/cuda_forward_pair.zig b/zig/src/families/glm/cuda_forward_pair.zig
+index eec6992e7..1ff3e7c84 100644
+--- a/zig/src/families/glm/cuda_forward_pair.zig
++++ b/zig/src/families/glm/cuda_forward_pair.zig
+@@ -10,7 +10,7 @@ const room = fw.Forward.room;
+ const share = fw.Forward.share;
+ 
+ /// Two consecutive prompt chunks of one sequence (`b` a view of `a`'s at its end), each on `pieced`'s kernels and bits.
+-pub fn pairBody(a: *const Forward, b: *const Forward, ra: usize, rb: usize) !void {
++pub fn pairBody(a: *const Forward, b: *const Forward, ra: usize, rb: usize, final: bool) !void {
+     const two = [_]*const Forward{ a, b };
+     const rows = [_]usize{ ra, rb };
+     var cuts: [2][fw.max_pieces][2]usize = undefined;
+@@ -47,9 +47,10 @@ pub fn pairBody(a: *const Forward, b: *const Forward, ra: usize, rb: usize) !voi
+             .mla => di += 1,
+         }
+     }
++    const heads = [2]bool{ false, final };
+     for (two, rows, 0..) |f, R, i| {
+         try awaitShared(f, f.pieces.?, n[i]);
+-        try f.finish(R);
++        try f.finish(R, heads[i]);
+     }
+ }
+ 
+diff --git a/zig/src/families/glm/cuda_prompt_pair.zig b/zig/src/families/glm/cuda_prompt_pair.zig
+index bf895cd28..90e64530f 100644
+--- a/zig/src/families/glm/cuda_prompt_pair.zig
++++ b/zig/src/families/glm/cuda_prompt_pair.zig
+@@ -101,7 +101,8 @@ pub fn prefill(e: *Engine, part: []const u32, start: usize, len: usize, cancel:
+     const ids: []const i32 = @ptrCast(part);
+     try cuda.copy_source.enqueue(e.d, e.bp.ids, std.mem.sliceAsBytes(ids[0..ra]), e.stream);
+     try cuda.copy_source.enqueue(e.d, pair.bp.ids, std.mem.sliceAsBytes(ids[ra .. ra + rb]), e.stream);
+-    try fw.Forward.pairBody(&fa, &fb, ra, rb);
++    const last = start + ra + rb == len;
++    try fw.Forward.pairBody(&fa, &fb, ra, rb, last);
+     pair.steps += 1;
+     e.index_splits += @intFromBool(split);
+     try mtpRows(e, &fa, ids[1 .. ra + 1], e.bp.fnormed);
+@@ -109,7 +110,7 @@ pub fn prefill(e: *Engine, part: []const u32, start: usize, len: usize, cancel:
+     st.pending = rb;
+     st.prompt = true;
+     var first: ?u32 = null;
+-    if (start + ra + rb == len) {
++    if (last) {
+         var t: [1]u32 = undefined;
+         try e.draw(pair.bp.logits, 1, len, 0, &t);
+         first = t[0];
+@@ -123,7 +124,7 @@ pub fn prefill(e: *Engine, part: []const u32, start: usize, len: usize, cancel:
+ /// decode._absorb_rows of a chunk: the MTP head over its next ids `nxt` on its final-norm rows `hidden`.
+ fn mtpRows(e: *Engine, f: *fw.Forward, nxt: []const i32, hidden: u64) !void {
+     if (!e.mtp or nxt.len == 0) return;
+-    try f.mtp(nxt, &.{hidden});
++    try f.mtpMode(nxt, &.{hidden}, false);
+     try e.cur.st.setMtpLen(e.stream, e.cur.st.mtp_len + nxt.len);
+ }
+ 
+diff --git a/zig/src/families/glm/cuda_prompt_solo.zig b/zig/src/families/glm/cuda_prompt_solo.zig
+index 0c3395ea7..111ce5680 100644
+--- a/zig/src/families/glm/cuda_prompt_solo.zig
++++ b/zig/src/families/glm/cuda_prompt_solo.zig
+@@ -54,7 +54,7 @@ pub fn mtpRows(e: *Engine, f: *fw.Forward, ids: []const i32) !void {
+     var done: usize = 0;
+     while (done + 1 < ids.len) {
+         const nxt = ids[done + 1 .. @min(ids.len, done + 1 + fw.prefill_rows)];
+-        try f.mtp(nxt, &.{e.bp.fnormed + done * e.c.hidden * 2});
++        try f.mtpMode(nxt, &.{e.bp.fnormed + done * e.c.hidden * 2}, false);
+         try e.cur.st.setMtpLen(e.stream, e.cur.st.mtp_len + nxt.len);
+         done += nxt.len;
+     }
+diff --git a/zig/src/families/glm/cuda_prompts.zig b/zig/src/families/glm/cuda_prompts.zig
+index 5f63e47c1..4a55a425d 100644
+--- a/zig/src/families/glm/cuda_prompts.zig
++++ b/zig/src/families/glm/cuda_prompts.zig
+@@ -62,7 +62,7 @@ pub fn pass(e: anytype, parts: []const engine.Prompt, firsts: []u32, comptime Fo
+         one[0] = .{ .w = &e.w, .st = g.st, .b = &e.bp };
+         // decode._absorb_rows; the head's pass writes final-norm row 0, which the hold rows above already copied
+         if (e.mtp and g.rows > 1) {
+-            try f.mtp(@ptrCast(p.ids[1..]), &.{e.bp.fnormed + g.row0 * D * 2});
++            try f.mtpMode(@ptrCast(p.ids[1..]), &.{e.bp.fnormed + g.row0 * D * 2}, false);
+             try g.st.setMtpLen(e.stream, g.st.mtp_len + g.rows - 1);
+         }
+         try f.commit(g.rows);

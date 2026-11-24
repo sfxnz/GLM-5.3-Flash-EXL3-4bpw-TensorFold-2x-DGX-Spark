@@ -1,5 +1,5 @@
-ARG TF_VERSION=1.2.5
-ARG TF_SHA256=1a0192b28d6ab6ec2749f3ff25515379dba4895171e781b30f810afc971ae4f8
+ARG TF_VERSION=1.2.10
+ARG TF_SHA256=c335c44f81d55847a5f81d74a94ac3d09f81bd6688247cff972cf1f63fc18105
 
 # nvidia/cuda:13.0.0-base-ubuntu24.04 (arm64). CUDA 13.0 matches the R580 driver, and its apt source is
 # NVIDIA's sbsa repo, which carries cuBLAS 13 and NCCL 2 without pulling a 24 GB framework image.

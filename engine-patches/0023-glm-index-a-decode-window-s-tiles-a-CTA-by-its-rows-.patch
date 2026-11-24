@@ -1,0 +1,69 @@
+From 1d83923b71382d3f76a2c46f9b1043f45123b1c0 Mon Sep 17 00:00:00 2001
+From: Bizuayeu <30091157+Bizuayeu@users.noreply.github.com>
+Date: Mon, 16 Nov 2026 20:50:11 +0900
+Subject: [PATCH 23/39] glm index: a decode window's tiles a CTA by its rows
+ and blocks
+
+decodeLoop chose a window's 64-pool tiles a CTA from its blocks alone (about 376 CTAs a row group). On GB10 the
+fastest tiles also follow the rows: a tile a CTA up to 4 rows, 2 up to 8, then rows / 4 a 1,024 blocks (rounded
+up), at most score_tiles and never under 32 CTAs a row group. The rule is fit to a sweep of glm_index_scores by
+rows and blocks; it changes speed only. The contract's served decode shapes keep 2, 4 and 1 tiles a CTA.
+---
+ zig/src/families/glm/cuda_index.zig  | 23 ++++++++++++++---------
+ zig/src/families/glm/cuda_sparse.zig |  2 +-
+ 2 files changed, 15 insertions(+), 10 deletions(-)
+
+diff --git a/zig/src/families/glm/cuda_index.zig b/zig/src/families/glm/cuda_index.zig
+index 5baa910c6..856018e19 100644
+--- a/zig/src/families/glm/cuda_index.zig
++++ b/zig/src/families/glm/cuda_index.zig
+@@ -38,9 +38,10 @@ pub const Mode = enum {
+     }
+ };
+ 
+-/// A decode window's 64-pool tiles a CTA: about 376 CTAs a row group at long context, 1 to score_tiles (speed only).
+-pub fn decodeLoop(nb: usize) usize {
+-    return @max(1, @min(score_tiles, nb / 376));
++/// A decode window's 64-pool tiles a CTA by its rows and blocks, fit to a sweep on GB10 (speed only).
++pub fn decodeLoop(rows: usize, nb: usize) usize {
++    const want: usize = if (rows <= 4) 1 else if (rows <= 8) 2 else rows / 4 * ((nb + 1023) / 1024);
++    return @max(1, @min(@min(score_tiles, want), @max(1, nb / 32)));
+ }
+ 
+ /// glm_index_scores' grid: rows in CTAs of 8, the `nb` pool blocks in runs of score_tiles.
+@@ -142,12 +143,16 @@ test "GLM index: the candidate cap follows the pool count and stays in shared me
+     try std.testing.expect(tile(1 << 30).cap <= cap_max);
+ }
+ 
+-test "GLM index: a decode window's tiles a CTA keep a few hundred CTAs at long context" {
+-    try std.testing.expectEqual(@as(usize, 8), decodeLoop(3376)); // 864K: 422 CTAs a row group
+-    try std.testing.expectEqual(@as(usize, 2), decodeLoop(800)); // 200K
+-    try std.testing.expectEqual(@as(usize, 1), decodeLoop(512)); // 128K and below: a tile a CTA
+-    try std.testing.expectEqual(@as(usize, 1), decodeLoop(8));
+-    try std.testing.expectEqual(@as(usize, score_tiles), decodeLoop(1 << 20));
++test "GLM index: a decode window's tiles a CTA follow its rows and blocks" {
++    try std.testing.expectEqual(@as(usize, 1), decodeLoop(4, 4064)); // 4 rows at 1M: a tile a CTA
++    try std.testing.expectEqual(@as(usize, 2), decodeLoop(8, 4064));
++    try std.testing.expectEqual(@as(usize, 16), decodeLoop(16, 4064)); // 1M: 1,024 blocks round up
++    try std.testing.expectEqual(@as(usize, 8), decodeLoop(16, 2048)); // 512K
++    try std.testing.expectEqual(@as(usize, score_tiles), decodeLoop(32, 4064));
++    try std.testing.expectEqual(@as(usize, 4), decodeLoop(16, 1024)); // 256K
++    try std.testing.expectEqual(@as(usize, 2), decodeLoop(32, 64)); // 16K: nb / 32 keeps the CTAs
++    try std.testing.expectEqual(@as(usize, 1), decodeLoop(8, 8));
++    try std.testing.expectEqual(@as(usize, score_tiles), decodeLoop(48, 1 << 20));
+ }
+ 
+ test "GLM index: decode windows on aligned key caches take the scores kernel" {
+diff --git a/zig/src/families/glm/cuda_sparse.zig b/zig/src/families/glm/cuda_sparse.zig
+index 1bd9e67ef..42ef0e4f5 100644
+--- a/zig/src/families/glm/cuda_sparse.zig
++++ b/zig/src/families/glm/cuda_sparse.zig
+@@ -158,7 +158,7 @@ pub fn selectTokensProfile(set: glue.Set, ops: cuda.Module, stream: cuda.Stream,
+         // a decode window's rows: the same scores from glm_index_scores (8 rows a CTA, key tiles staged once)
+         const dec = if (set.dscore) |k| if (k.takesDecode(rows, np_max, nb, pk, t.ps)) k else null else null;
+         var stamp = prof.span(profile, stream, .index_score);
+-        if (quick) |k| try k.scores(stream, qi + a * heads * d * 2, wts + a * w_stride * 2, w_stride, pk, s.scores, at, n, np_max, nb, scale, headScale(heads), heads, t.pt, t.ps) else if (dec) |k| try k.scoresTiles(stream, qi + a * heads * d * 2, wts + a * w_stride * 2, w_stride, pk, s.scores, at, n, np_max, nb, scale, headScale(heads), heads, t.pt, t.ps, index_mod.decodeLoop(nb)) else try cuda_pdl.launch(set.glue.scores, .{ .grid = .{ .x = @intCast(n), .y = @intCast(cdiv(nb, loop)) }, .block = .{ .x = 128 } }, stream, &sa);
++        if (quick) |k| try k.scores(stream, qi + a * heads * d * 2, wts + a * w_stride * 2, w_stride, pk, s.scores, at, n, np_max, nb, scale, headScale(heads), heads, t.pt, t.ps) else if (dec) |k| try k.scoresTiles(stream, qi + a * heads * d * 2, wts + a * w_stride * 2, w_stride, pk, s.scores, at, n, np_max, nb, scale, headScale(heads), heads, t.pt, t.ps, index_mod.decodeLoop(n, nb)) else try cuda_pdl.launch(set.glue.scores, .{ .grid = .{ .x = @intCast(n), .y = @intCast(cdiv(nb, loop)) }, .block = .{ .x = 128 } }, stream, &sa);
+         stamp.end();
+         stamp = prof.span(profile, stream, .index_select);
+         if (quick) |k| if (k.select) {

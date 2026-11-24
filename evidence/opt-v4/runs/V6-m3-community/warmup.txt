@@ -1,0 +1,4 @@
+before 17:01:41 head fp 102764 MiB avail 11311 MiB swapout+ 0 MiB | worker fp 101529 MiB avail 16623 MiB [warmup]
+bench rc 0
+pswpout head 106397449
+steady 17:02:33 head fp 103065 MiB avail 11003 MiB swapout+ 0 MiB | worker fp 101829 MiB avail 16279 MiB

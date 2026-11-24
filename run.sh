@@ -95,6 +95,10 @@ rank_argv() {
   [[ -n $ENGINE_CACHE ]] && mount+=(-v "$ENGINE_CACHE:/root/.cache/tensorfold")
   for e in $EXTRA_ENV; do env+=(-e "$e"); done
   read -ra extra <<<"$EXTRA_ARGS"
+  if [[ -n $DRAFTER ]]; then
+    local ddir=$HF_CACHE/hub/models--${DRAFTER//\//--}
+    mount+=(-v "$ddir:$ddir:ro"); extra+=(--drafter "$ddir/snapshots/$DRAFTER_REVISION" --drafter-bits "$DRAFTER_BITS")
+  fi
   [[ -n $API_KEY_FILE ]] && { keys=(--api-key-file "$API_KEY_FILE"); mount+=(-v "$API_KEY_FILE:$API_KEY_FILE:ro"); }
   printf '%s\n' docker run -d --name "$NAME_PREFIX$1" --label "$LABEL" \
     --gpus all --network host --ipc host --device /dev/infiniband --ulimit memlock=-1 --ulimit core=0 --oom-score-adj 1000 \

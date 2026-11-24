@@ -1,0 +1,700 @@
+From 4cb14484fee013155785fc7f981facaa1b619443 Mon Sep 17 00:00:00 2001
+From: ultradaoto <ultradaoto@users.noreply.github.com>
+Date: Tue, 17 Nov 2026 05:58:13 +0000
+Subject: [PATCH 25/39] glm/cuda: TF_GLM_MOE_DIRECT=1 runs a decode window's
+ EXL3 MoE without its row copies and put_slot (#3570)
+
+---
+ docs/environment.md                        |   1 +
+ zig/kernels/cuda/glm_glue_moe.cuh          |   3 +-
+ zig/kernels/cuda/glm_glue_rows.cuh         |  21 ++
+ zig/src/core/contract/glm_cuda_records.zig |   2 +
+ zig/src/families/glm/cuda_env_test.zig     |   1 +
+ zig/src/families/glm/cuda_exl3.zig         |  11 +
+ zig/src/families/glm/cuda_forward.zig      |   5 +-
+ zig/src/families/glm/cuda_glue.zig         |  14 +-
+ zig/src/families/glm/cuda_moe.zig          |  23 +-
+ zig/src/platform/environment.zig           |   1 +
+ zig/tests/cuda/contract_family_sets.zig    |   5 +
+ zig/tests/cuda/contract_glm_moe_direct.zig | 375 +++++++++++++++++++++
+ zig/tests/cuda/glm_ref_tests.zig           |   2 +-
+ 13 files changed, 456 insertions(+), 8 deletions(-)
+ create mode 100644 zig/tests/cuda/contract_glm_moe_direct.zig
+
+diff --git a/docs/environment.md b/docs/environment.md
+index 5e3a2939c..3ec0bccec 100644
+--- a/docs/environment.md
++++ b/docs/environment.md
+@@ -61,6 +61,7 @@ Diagnostics quote and escape the supplied text so it cannot create another termi
+ | `TF_GLM_SHARED` | Exactly `0` or `1`; default on (GLM windows share a forward); read on rank 0 |
+ | `TF_GLM_DSEL` | Exactly `0` or `1`; default on (a GLM decode window's DSA select runs on many CTAs; 0 keeps one CTA a row) |
+ | `TF_GLM_DSCORES` | Exactly `0` or `1`; default on (a GLM decode window's DSA index scores run on glm_index_scores; 0 keeps tf_glm_scores) |
++| `TF_GLM_MOE_DIRECT` | Exactly `0` or `1`; default off. On, a GLM decode window's EXL3 experts read the top-k kernel's flat picks and leave their slot rows in place, summed with the shared expert's row by one kernel: no row copies and no slot write, the same bytes (#3570) |
+ | `TF_GLM_DFLASH2_LOG` | Whole unsigned 64-bit count of DFlash2 rounds whose drafts are logged; default 0 |
+ | `TF_GLM_DRAFT_CONFIDENCE` | Finite number 0 through 1 where a DFlash2 chain's chance product stops it; default 0.7 |
+ | `TF_GLM_CONTEXT_CEILING` | GLM-5.3-Flash on CUDA: whole token count 1 through 2147483616, the window `--context` may ask for and `--context 0` serves, in place of config.json's 1048576; read at GLM's open. Past that length the model's quality is the operator's to check. Unset keeps config.json's window |
+diff --git a/zig/kernels/cuda/glm_glue_moe.cuh b/zig/kernels/cuda/glm_glue_moe.cuh
+index 3926c03f5..e880f345d 100644
+--- a/zig/kernels/cuda/glm_glue_moe.cuh
++++ b/zig/kernels/cuda/glm_glue_moe.cuh
+@@ -25,7 +25,7 @@ extern "C" __global__ void __launch_bounds__(128)
+ // glue._topk, a warp a row: top_k by sigmoid + bias (ties to lower id), normed if `norm`, x scale; then shared expert.
+ extern "C" __global__ void __launch_bounds__(32)
+     tf_glm_topk(const float* logits, const float* bias, int* pick, float* wts, float scale, int ne, int top_k,
+-                int norm) {
++                int norm, int* flat) {
+   glm_pdl::enter();
+   constexpr int MAXE = 16;  // 512 experts a row
+   const int64_t r = blockIdx.x;
+@@ -62,6 +62,7 @@ extern "C" __global__ void __launch_bounds__(32)
+   if (lane < top_k) {
+     const float v = norm ? div_full(mine, total + 1e-20f) : mine;
+     pick[r * (top_k + 1) + lane] = mine_id;
++    if (flat) flat[r * top_k + lane] = mine_id;  // the EXL3 grouper's [rows][top_k] picks (#3570)
+     wts[r * (top_k + 1) + lane] = __fmul_rn(v, scale);
+   } else if (lane == top_k) {
+     pick[r * (top_k + 1) + lane] = ne;
+diff --git a/zig/kernels/cuda/glm_glue_rows.cuh b/zig/kernels/cuda/glm_glue_rows.cuh
+index d141895f5..55c40bbc1 100644
+--- a/zig/kernels/cuda/glm_glue_rows.cuh
++++ b/zig/kernels/cuda/glm_glue_rows.cuh
+@@ -142,6 +142,27 @@ extern "C" __global__ void tf_glm_combine(
+   *reinterpret_cast<float4*>(o + 4) = make_float4(a[4], a[5], a[6], a[7]);
+ }
+ 
++// tf_glm_combine with the last slot apart (#3570): y [rows][slots - 1][d], tail [rows][d], fp32; its fmas in order.
++extern "C" __global__ void tf_glm_combine_tail(
++        const float* y, const float* tail, const float* wts, float* out, int64_t d, int slots) {
++  const int64_t c = glm_glue::col8();
++  if (c >= d) return;
++  const int64_t r = blockIdx.x;
++  float a[8] = {};
++  for (int k = 0; k < slots; ++k) {
++    float v[8];
++    if (k + 1 < slots)
++      glm_glue::ld8(y + (r * (slots - 1) + k) * d + c, v);
++    else
++      glm_glue::ld8(tail + r * d + c, v);
++    const float w = wts[r * slots + k];
++    for (int j = 0; j < 8; ++j) a[j] = __fmaf_rn(v[j], w, a[j]);
++  }
++  float* o = out + r * d + c;
++  *reinterpret_cast<float4*>(o) = make_float4(a[0], a[1], a[2], a[3]);
++  *reinterpret_cast<float4*>(o + 4) = make_float4(a[4], a[5], a[6], a[7]);
++}
++
+ // glue._router_sum and qmm._reduce: ks slices of `total` fp32 added in order (fp32 or bf16 out), 8 values a thread.
+ extern "C" __global__ void tf_glm_slice_sum(const float* part, void* out, int64_t total, int ks, int f32) {
+   glm_pdl::enter();
+diff --git a/zig/src/core/contract/glm_cuda_records.zig b/zig/src/core/contract/glm_cuda_records.zig
+index 1b29f5a27..ea8514d2d 100644
+--- a/zig/src/core/contract/glm_cuda_records.zig
++++ b/zig/src/core/contract/glm_cuda_records.zig
+@@ -4,6 +4,8 @@ const registry = @import("registry.zig");
+ /// nvcc 13.0's usage, the compiler of the release fatbins.
+ pub const cuda = [_]registry.CudaRecord{
+     .{ .launch = .{ .name = "glm_glue tf_glm_router_tile", .symbol = "tf_glm_router_tile", .image = "glm_glue", .threads = 128, .dynamic = 27648, .min_sm = 80 }, .usage = .{ .{ .regs = 34, .static = 0, .bound = 128 }, .{ .regs = 36, .static = 0, .bound = 128 }, .{ .regs = 36, .static = 0, .bound = 128 }, .{ .regs = 40, .static = 0, .bound = 128 }, .{ .regs = 40, .static = 0, .bound = 128 } }, .later_pending = true },
++    .{ .launch = .{ .name = "glm_glue tf_glm_topk", .symbol = "tf_glm_topk", .image = "glm_glue", .threads = 32, .min_sm = 80 }, .usage = .{ .{ .regs = 64, .static = 0, .bound = 32 }, .{ .regs = 66, .static = 0, .bound = 32 }, .{ .regs = 66, .static = 0, .bound = 32 }, .{ .regs = 68, .static = 0, .bound = 32 }, .{ .regs = 68, .static = 0, .bound = 32 } }, .later_pending = true },
++    .{ .launch = .{ .name = "glm_glue tf_glm_combine_tail", .symbol = "tf_glm_combine_tail", .image = "glm_glue", .threads = 128, .min_sm = 80 }, .usage = .{ .{ .regs = 32, .static = 0, .bound = 0 }, .{ .regs = 40, .static = 0, .bound = 0 }, .{ .regs = 40, .static = 0, .bound = 0 }, .{ .regs = 44, .static = 0, .bound = 0 }, .{ .regs = 44, .static = 0, .bound = 0 } }, .later_pending = true },
+     .{ .launch = .{ .name = "glm_mm16_16", .symbol = "glm_mm16_16", .image = "glm_mm", .threads = 128, .dynamic = 31104, .opt_in = true, .min_sm = 80 }, .usage = .{ .{ .regs = 95, .static = 0, .bound = 128 }, .{ .regs = 95, .static = 0, .bound = 128 }, .{ .regs = 95, .static = 0, .bound = 128 }, .{ .regs = 52, .static = 0, .bound = 128 }, .{ .regs = 52, .static = 0, .bound = 128 } } },
+     .{ .launch = .{ .name = "glm_mm16_32", .symbol = "glm_mm16_32", .image = "glm_mm", .threads = 128, .dynamic = 37248, .opt_in = true, .min_sm = 80 }, .usage = .{ .{ .regs = 95, .static = 0, .bound = 128 }, .{ .regs = 95, .static = 0, .bound = 128 }, .{ .regs = 95, .static = 0, .bound = 128 }, .{ .regs = 64, .static = 0, .bound = 128 }, .{ .regs = 64, .static = 0, .bound = 128 } } },
+     .{ .launch = .{ .name = "glm_mm16_64", .symbol = "glm_mm16_64", .image = "glm_mm", .threads = 256, .dynamic = 49536, .opt_in = true, .min_sm = 80 }, .usage = .{ .{ .regs = 95, .static = 0, .bound = 256 }, .{ .regs = 95, .static = 0, .bound = 256 }, .{ .regs = 95, .static = 0, .bound = 256 }, .{ .regs = 64, .static = 0, .bound = 256 }, .{ .regs = 64, .static = 0, .bound = 256 } } },
+diff --git a/zig/src/families/glm/cuda_env_test.zig b/zig/src/families/glm/cuda_env_test.zig
+index e4e0db3fd..1c389c982 100644
+--- a/zig/src/families/glm/cuda_env_test.zig
++++ b/zig/src/families/glm/cuda_env_test.zig
+@@ -17,6 +17,7 @@ const switches = [_]Name{
+     .{ .name = "TF_GLM_SHARED", .default = true },
+     .{ .name = "TF_GLM_DSEL", .default = true },
+     .{ .name = "TF_GLM_DSCORES", .default = true },
++    .{ .name = "TF_GLM_MOE_DIRECT" },
+ };
+ const counts = [_][:0]const u8{"TF_GLM_DFLASH2_LOG"};
+ const reals = [_][:0]const u8{"TF_GLM_DRAFT_CONFIDENCE"};
+diff --git a/zig/src/families/glm/cuda_exl3.zig b/zig/src/families/glm/cuda_exl3.zig
+index 1b9133514..e3577be13 100644
+--- a/zig/src/families/glm/cuda_exl3.zig
++++ b/zig/src/families/glm/cuda_exl3.zig
+@@ -308,6 +308,17 @@ pub fn run(k: *const Kernels, ek: *const experts.Kernels, stream: cuda.Stream, w
+     return compact(k, stream, w, sc, x, x_stride, picks, slots, rows, count, dims, width, limit, ey);
+ }
+ 
++/// TF_GLM_MOE_DIRECT: compact's one chunk on picks top-k wrote flat at sc.picks; the slot rows stay at `directOut`.
++pub fn runDirect(k: *const Kernels, stream: cuda.Stream, w: Experts, sc: Scratch, x: u64, x_stride: usize, rows: usize, count: usize, dims: usize, width: usize, limit: f32) !void {
++    if (dims % 256 != 0 or width % 128 != 0 or rows == 0 or rows > chunk_rows) return error.UnreadableExl3;
++    const l = layer(w, count, dims, width, limit);
++    try k.runSlots(stream, l, x, x_stride, .bf16, sc.picks, rows, try common.scratch(sc.picks + picksBytes(rows), l, rows, top_k));
++}
++
++/// Where runDirect leaves the routed slot rows of its `rows` rows: fp32 [rows][top_k][dims], compact's copy source.
++pub fn directOut(w: Experts, sc: Scratch, rows: usize, count: usize, dims: usize, width: usize, limit: f32) !u64 {
++    return (try common.scratch(sc.picks + picksBytes(rows), layer(w, count, dims, width, limit), rows, top_k)).y;
++}
+ /// Compact routed picks and output for decode or prompt layers without the whole-pass kernel.
+ fn compact(k: *const Kernels, stream: cuda.Stream, w: Experts, sc: Scratch, x: u64, x_stride: usize, picks: u64, slots: usize, rows: usize, count: usize, dims: usize, width: usize, limit: f32, ey: u64) !void {
+     const l = layer(w, count, dims, width, limit);
+diff --git a/zig/src/families/glm/cuda_forward.zig b/zig/src/families/glm/cuda_forward.zig
+index 32301dbf1..8d4024af6 100644
+--- a/zig/src/families/glm/cuda_forward.zig
++++ b/zig/src/families/glm/cuda_forward.zig
+@@ -48,6 +48,7 @@ pub const Modules = struct {
+     index: ?index_mod.Kernels, // TF_GLM_INDEX_CUDA: a prompt chunk's indexer scores and pools (glm_index)
+     dsel: bool, // TF_GLM_DSEL (default on): a decode window's DSA select on many CTAs (cuda_sparse.decodeSelect)
+     dscore: ?index_mod.Kernels, // TF_GLM_DSCORES (default on): a decode window's index scores on glm_index_scores
++    moe_direct: bool, // TF_GLM_MOE_DIRECT (default off): a decode window's EXL3 MoE without row copies (cuda_moe.direct)
+     tiled: bool = false, // eligible bf16 linears are tiled; KDA inputs with uneven strides retain their row-major path
+     packs: ?*const mm_mod.Packed = null, // the linears packed to 4, 6 or 8 bits (TF_GLM_DENSE_BITS, _HEAD_BITS)
+     copy_rows: cuda.Function,
+@@ -101,6 +102,8 @@ pub const Modules = struct {
+                 break :blk null;
+             };
+         } else std.log.warn("TF_GLM_DSCORES=0: a decode window's index scores keep tf_glm_scores", .{});
++        m.moe_direct = try @import("sys").environment.read(bool, "TF_GLM_MOE_DIRECT", false);
++        if (m.moe_direct) std.log.info("TF_GLM_MOE_DIRECT=1: a decode window's EXL3 experts read flat picks, one slot sum", .{});
+         m.tiled = false;
+         m.packs = null; // `m` starts undefined: the field default does not apply
+         return m;
+@@ -270,7 +273,7 @@ pub const Forward = struct {
+     }
+ 
+     fn moeKernels(f: *const Forward) moe.Kernels {
+-        return .{ .set = f.set(), .experts = &f.m.experts, .exl3 = &f.m.exl3, .put_slot = f.m.put_slot, .prof = f.prof };
++        return .{ .set = f.set(), .experts = &f.m.experts, .exl3 = &f.m.exl3, .put_slot = f.m.put_slot, .prof = f.prof, .direct = f.m.moe_direct };
+     }
+ 
+     pub const Site = enum { mixer, ffn };
+diff --git a/zig/src/families/glm/cuda_glue.zig b/zig/src/families/glm/cuda_glue.zig
+index 761ede65d..af9049584 100644
+--- a/zig/src/families/glm/cuda_glue.zig
++++ b/zig/src/families/glm/cuda_glue.zig
+@@ -37,6 +37,7 @@ pub const Kernels = struct {
+     rank_sum: cuda.Function,
+     hc_post: cuda.Function,
+     combine: cuda.Function,
++    combine_tail: cuda.Function,
+     slice_sum: cuda.Function,
+     top1: cuda.Function,
+     top1_sums: cuda.Function,
+@@ -203,11 +204,11 @@ pub fn router(set: Set, stream: cuda.Stream, x: u64, x_stride: usize, w: u64, ou
+     try sliceSum(set, stream, part, out, m * ne, router_ks, true);
+ }
+ 
+-/// glue.select: top_k by sigmoid + bias (lower id on ties), normed if `norm`, times `scale`, then the shared expert.
+-pub fn select(set: Set, stream: cuda.Stream, logits: u64, bias: u64, pick: u64, wts: u64, rows: usize, top_k: usize, experts: usize, scale: f32, norm: bool) !void {
++/// glue.select: top_k by sigmoid + bias (lower id on ties), normed, times `scale`, then shared; `flat`: [rows][top_k].
++pub fn select(set: Set, stream: cuda.Stream, logits: u64, bias: u64, pick: u64, wts: u64, rows: usize, top_k: usize, experts: usize, scale: f32, norm: bool, flat: ?u64) !void {
+     if (experts > 512 or top_k >= 32) return error.TopkTooWide;
+     var a: cuda.Args = .{};
+-    inline for (.{ logits, bias, pick, wts, scale, cint(experts), cint(top_k), @as(c_int, @intFromBool(norm)) }) |v| a.add(v);
++    inline for (.{ logits, bias, pick, wts, scale, cint(experts), cint(top_k), @as(c_int, @intFromBool(norm)), flat orelse @as(u64, 0) }) |v| a.add(v);
+     try cuda_pdl.launch(set.glue.topk, .{ .grid = .{ .x = @intCast(rows) }, .block = .{ .x = 32 } }, stream, &a);
+ }
+ 
+@@ -218,6 +219,13 @@ pub fn combine(set: Set, stream: cuda.Stream, y: u64, y_f32: bool, wts: u64, out
+     try rows8Launch(set.glue.combine, stream, &a, rows, d, .{ y, out });
+ }
+ 
++/// glue.combine with the last slot apart: y fp32 [rows][slots - 1][d], tail fp32 [rows][d]; combine's bytes.
++pub fn combineTail(set: Set, stream: cuda.Stream, y: u64, tail: u64, wts: u64, out: u64, rows: usize, d: usize, slots: usize) !void {
++    var a: cuda.Args = .{};
++    inline for (.{ y, tail, wts, out, i64of(d), cint(slots) }) |v| a.add(v);
++    try rows8Launch(set.glue.combine_tail, stream, &a, rows, d, .{ y, tail, out });
++}
++
+ /// K blocks of the hyper-connection mixing dots (glue.HC_BLOCKS): fixed by the shape, like the router's slices.
+ pub const hc_blocks = 16;
+ 
+diff --git a/zig/src/families/glm/cuda_moe.zig b/zig/src/families/glm/cuda_moe.zig
+index edde69f93..be647c555 100644
+--- a/zig/src/families/glm/cuda_moe.zig
++++ b/zig/src/families/glm/cuda_moe.zig
+@@ -42,7 +42,19 @@ pub const Scratch = struct {
+ };
+ 
+ /// The kernels the block runs: the captured Triton set, the grouped NVFP4 experts, the plan, and glm_ops.
+-pub const Kernels = struct { set: glue.Set, experts: *const experts.Kernels, exl3: *const exl3.Kernels, put_slot: cuda.Function, prof: ?*prof_mod.Prof = null };
++pub const Kernels = struct {
++    set: glue.Set,
++    experts: *const experts.Kernels,
++    exl3: *const exl3.Kernels,
++    put_slot: cuda.Function,
++    prof: ?*prof_mod.Prof = null,
++    direct: bool = false, // TF_GLM_MOE_DIRECT=1 (opt-in): see `direct`
++};
++
++/// TF_GLM_MOE_DIRECT=1: a decode window's EXL3 experts on flat picks, their slot rows summed in place (no copies).
++fn direct(k: Kernels, l: Layer, rows: usize, prompt: bool) bool {
++    return k.direct and !prompt and l.exl3 != null and l.top_k == exl3.top_k and rows <= exl3.chunk_rows;
++}
+ 
+ /// forward.moe_block: out [rows][dims] fp32 partial; `prompt`: 64-pair items, the prompt kernels, bf16 slot rows.
+ pub fn block(k: Kernels, stream: cuda.Stream, l: Layer, s: Scratch, x: u64, x_stride: usize, rows: usize, prompt: bool, out: u64) !void {
+@@ -57,12 +69,14 @@ pub fn body(k: Kernels, stream: cuda.Stream, l: Layer, s: Scratch, x: u64, x_str
+     const shared_id: i32 = @intCast(l.count);
+     var stamp = prof_mod.span(k.prof, stream, .router);
+     try glue.router(k.set, stream, x, x_stride, l.router, s.mlog, s.router_part, rows, d, l.count);
+-    try glue.select(k.set, stream, s.mlog, l.bias, s.pick, s.wts, rows, l.top_k, l.count, l.scale, l.norm);
++    const flat = direct(k, l, rows, prompt);
++    try glue.select(k.set, stream, s.mlog, l.bias, s.pick, s.wts, rows, l.top_k, l.count, l.scale, l.norm, if (flat) s.x3.picks else null);
+     stamp.end();
+     stamp = prof_mod.span(k.prof, stream, .experts);
+     defer stamp.end();
+     if (k.prof) |p| p.mark(stream, .router);
+     defer if (k.prof) |p| p.mark(stream, .routed);
++    if (flat) return exl3.runDirect(k.exl3, stream, l.exl3.?, s.x3, x, x_stride, rows, l.count, d, l.routed.width, l.routed.limit);
+     if (l.exl3) |w| return exl3.run(k.exl3, k.experts, stream, w, s.x3, s.plan, x, x_stride, s.pick, slots, rows, l.count, d, l.routed.width, l.routed.limit, prompt, s.ey, s.eact);
+     const plan: experts.Plan = .{ .route = s.plan, .slots = slots, .experts = l.count + 1, .prompt = prompt, .fact = !prompt and k.experts.fact and l.routed.format == .nvfp4 };
+     try experts.route(k.experts, stream, s.pick, rows * slots, plan);
+@@ -82,6 +96,11 @@ pub fn fill(k: Kernels, stream: cuda.Stream, l: Layer, s: Scratch, x: u64, x_str
+     try projection.matmul(k.set, stream, l.shared_gu, x + lo * x_stride * 2, x_stride, s.sgu + lo * 2 * l.shared * 2, s.mm_part, n, 2 * l.shared, d, false);
+     try glue.swiglu(k.set, stream, s.sgu + lo * 2 * l.shared * 2, s.sact + lo * l.shared * 2, s.sxs + lo * (l.shared / 64) * 4, l.routed.limit, n, l.shared);
+     try projection.matmul(k.set, stream, l.shared_down, s.sact + lo * l.shared * 2, l.shared, s.sy + lo * d * 4, s.mm_part, n, d, l.shared, true);
++    if (direct(k, l, hi, prompt)) { // body ran these rows direct: a decode window, filled whole (forward.ffn)
++        if (lo != 0) return error.BadWindow;
++        const y = try exl3.directOut(l.exl3.?, s.x3, hi, l.count, d, l.routed.width, l.routed.limit);
++        return glue.combineTail(k.set, stream, y, s.sy, s.wts, out, n, d, slots);
++    }
+     var a: cuda.Args = .{};
+     a.add(s.sy + lo * d * 4);
+     a.add(s.ey + lo * slots * d * eb);
+diff --git a/zig/src/platform/environment.zig b/zig/src/platform/environment.zig
+index 517b4a15b..d1fbe7874 100644
+--- a/zig/src/platform/environment.zig
++++ b/zig/src/platform/environment.zig
+@@ -114,6 +114,7 @@ pub const rules = [_]Rule{
+     .{ .name = "TF_GLM_SHARED", .scope = .glm, .kind = .flag, .forms = "0 or 1" },
+     .{ .name = "TF_GLM_DSEL", .scope = .glm, .kind = .flag, .forms = "0 or 1" },
+     .{ .name = "TF_GLM_DSCORES", .scope = .glm, .kind = .flag, .forms = "0 or 1" },
++    .{ .name = "TF_GLM_MOE_DIRECT", .scope = .glm, .kind = .flag, .forms = "0 or 1" },
+     .{ .name = "TF_GLM_DFLASH2_LOG", .scope = .glm, .kind = .u64, .forms = "a whole unsigned 64-bit round count (0 logs no drafts)" },
+     .{ .name = "TF_GLM_DRAFT_CONFIDENCE", .scope = .glm, .kind = .real, .max = 1, .forms = "a finite chain-chance cut from 0 to 1 (default 0.7)" },
+     // 2^31 - 32: GLM's slots, the window and its 32 verify rows (glm/cuda_native.zig's capacity), keep i32 positions
+diff --git a/zig/tests/cuda/contract_family_sets.zig b/zig/tests/cuda/contract_family_sets.zig
+index 83cbe1d6c..66c26c932 100644
+--- a/zig/tests/cuda/contract_family_sets.zig
++++ b/zig/tests/cuda/contract_family_sets.zig
+@@ -25,6 +25,7 @@ pub const Sets = struct {
+     a: std.mem.Allocator,
+     joint_schema: *@import("contract_joint_schema.zig").Set,
+     idol: *@import("contract_idol.zig").Set,
++    glm_moe: *@import("contract_glm_moe_direct.zig").Set,
+ 
+     /// Each set's kernels appended to `list`, in this order.
+     pub fn init(gpu: check.Gpu, s: cuda.Stream, a: std.mem.Allocator, list: *std.ArrayList(g.Kernel), affine4: *cuda.qlinear.Affine4Kernels, cap: u32) !Sets {
+@@ -68,6 +69,8 @@ pub const Sets = struct {
+         const joint_schema = try @import("contract_joint_schema.zig").Set.init(gpu, s, a, list);
+         errdefer joint_schema.deinit();
+         const idol = try @import("contract_idol.zig").Set.init(gpu, s, a, list);
++        errdefer idol.deinit();
++        const glm_moe = try @import("contract_glm_moe_direct.zig").Set.init(gpu, s, a, list);
+         return .{
+             .gpa = gpu.gpa,
+             .bf16_experts = bf16_experts,
+@@ -85,11 +88,13 @@ pub const Sets = struct {
+             .idol = idol,
+             .muse = muse,
+             .a = a,
++            .glm_moe = glm_moe,
+         };
+     }
+ 
+     pub fn deinit(sets: Sets) void {
+         sets.idol.deinit();
++        sets.glm_moe.deinit();
+         sets.joint_schema.deinit();
+         sets.muse.destroy(sets.a);
+         sets.prompt.deinit();
+diff --git a/zig/tests/cuda/contract_glm_moe_direct.zig b/zig/tests/cuda/contract_glm_moe_direct.zig
+new file mode 100644
+index 000000000..462aca67b
+--- /dev/null
++++ b/zig/tests/cuda/contract_glm_moe_direct.zig
+@@ -0,0 +1,375 @@
++//! TF_GLM_MOE_DIRECT's kernels on CUDA (#3570): tf_glm_topk's flat picks by rule, tf_glm_combine_tail bit-equal.
++const std = @import("std");
++const cuda = @import("cuda");
++const core = @import("core");
++const glm = @import("glm_cuda");
++const check_ = @import("check.zig");
++const rig_ = @import("contract_rig.zig");
++
++const contract = core.contract;
++const c = contract.spec;
++const g = contract.gates;
++const glue = glm.glue;
++const top_k = glm.exl3.top_k;
++const slots = top_k + 1;
++const experts = 288; // GLM-5.3-Flash's routed experts; the shared expert's id is 288
++const dims = 4096;
++const scale: f32 = 2.5; // GLM-5.3-Flash's routed_scaling_factor
++
++fn noSums(_: c.Shape) usize {
++    return 0;
++}
++
++/// A seeded 64-bit stream (splitmix64), cheap enough for a chunk's slot rows.
++const Mix = struct {
++    x: u64,
++
++    fn next(m: *Mix) u64 {
++        m.x +%= 0x9e3779b97f4a7c15;
++        var z = m.x;
++        z = (z ^ (z >> 30)) *% 0xbf58476d1ce4e5b9;
++        z = (z ^ (z >> 27)) *% 0x94d049bb133111eb;
++        return z ^ (z >> 31);
++    }
++
++    /// One of `steps` evenly spaced values from lo up to, not including, hi.
++    fn grid(m: *Mix, lo: f32, hi: f32, steps: u32) f32 {
++        const i: f32 = @floatFromInt(m.next() % steps);
++        return lo + i * (hi - lo) / @as(f32, @floatFromInt(steps));
++    }
++};
++
++const pick_rule = "flat equal to pick's routed columns, and pick and wts bit-equal to the launch without flat, " ++
++    "non-finite logits included; on finite logits the top_k highest sigmoid + bias in order, ties to the lower " ++
++    "expert id, each weight its sigmoid normed over the picks times the scale, then the shared expert at weight 1";
++
++/// One warp a row, from one decode row to one EXL3 chunk.
++const pick_served = [_]c.Shape{
++    .{ .rows = 1, .n = experts, .k = top_k },
++    .{ .rows = 4, .n = experts, .k = top_k },
++    .{ .rows = 32, .n = experts, .k = top_k },
++    .{ .rows = 129, .n = experts, .k = top_k },
++    .{ .rows = glm.exl3.chunk_rows, .n = experts, .k = top_k },
++};
++
++pub fn pickSpec(control: bool) c.Spec {
++    const name = if (control) "cuda glm tf_glm_topk control: no flat pointer, the flat picks left unwritten" else "cuda glm tf_glm_topk with flat picks (TF_GLM_MOE_DIRECT)";
++    return .{ .name = name, .accum = .none, .depth = noSums, .out = .raw, .nan = .{ .stated = pick_rule }, .served = &pick_served };
++}
++
++/// tf_glm_topk as glue.select launches it, with the flat picks; its pick and wts against the launch without them.
++pub const Pick = struct {
++    rig: rig_.Rig,
++    set: glue.Set,
++    control: bool = false,
++    shape: c.Shape = undefined,
++    logits: []f32 = &.{},
++    bias: []f32 = &.{},
++    finite: bool = true,
++    in: [2]u64 = .{ 0, 0 },
++    out: [3]u64 = .{ 0, 0, 0 }, // pick, wts, flat
++    base: u64 = 0, // pick then wts of the launch without flat
++    got: std.ArrayList(u8) = .empty,
++    msg: [200]u8 = undefined,
++
++    const vt = g.hooks(Pick);
++
++    pub fn deinit(self: *Pick) void {
++        const a = self.rig.gpu.gpa;
++        a.free(self.logits);
++        a.free(self.bias);
++        self.got.deinit(a);
++        self.rig.deinit();
++    }
++
++    pub fn kernel(self: *Pick) g.Kernel {
++        return .{ .spec = pickSpec(self.control), .ctx = self, .vt = &vt, .control = if (self.control) .shapes else null };
++    }
++
++    /// Logits on a 1/16 grid, biases on a 1/64 grid shared by experts 2j and 2j + 1; the top-bias pair ties first.
++    pub fn prepare(self: *Pick, shape: c.Shape, fill: g.Fill, seed: u64) !bool {
++        if (shape.rows == 0 or shape.n != experts or shape.k != top_k) return false;
++        self.rig.reset();
++        const a = self.rig.gpu.gpa;
++        a.free(self.logits);
++        a.free(self.bias);
++        self.logits = &.{};
++        self.bias = &.{};
++        self.shape = shape;
++        self.logits = try a.alloc(f32, shape.rows * experts);
++        self.bias = try a.alloc(f32, experts);
++        var m: Mix = .{ .x = seed };
++        for (0..experts / 2) |j| {
++            const b = m.grid(-0.5, 0.5, 64);
++            self.bias[2 * j] = b;
++            self.bias[2 * j + 1] = b;
++        }
++        var top: usize = 0;
++        for (0..experts / 2) |j| if (self.bias[2 * j] > self.bias[2 * top]) {
++            top = j;
++        };
++        for (self.logits) |*x| x.* = m.grid(-8, 8, 256);
++        for (0..shape.rows) |r| {
++            self.logits[r * experts + 2 * top] = 9;
++            self.logits[r * experts + 2 * top + 1] = 9;
++        }
++        self.finite = fill != .nonfinite;
++        if (!self.finite) { // rows 0-3: NaN, +inf, -inf and both infinities at a few experts each
++            const put = [_][2]f32{ .{ std.math.nan(f32), std.math.nan(f32) }, .{ std.math.inf(f32), std.math.inf(f32) }, .{ -std.math.inf(f32), -std.math.inf(f32) }, .{ std.math.inf(f32), -std.math.inf(f32) } };
++            for (put, 0..) |v, r| if (r < shape.rows) {
++                for (0..4) |e| self.logits[r * experts + e * 71] = v[e % 2];
++            };
++        }
++        self.in[0] = try self.rig.input(std.mem.sliceAsBytes(self.logits));
++        self.in[1] = try self.rig.input(std.mem.sliceAsBytes(self.bias));
++        self.out[0] = try self.rig.output(shape.rows * slots * 4);
++        self.out[1] = try self.rig.output(shape.rows * slots * 4);
++        self.out[2] = try self.rig.output(shape.rows * top_k * 4);
++        self.base = try self.rig.scratch(2 * shape.rows * slots * 4);
++        return true;
++    }
++
++    /// The control launches as before #3570, without the flat pointer.
++    pub fn run(self: *Pick) !void {
++        try glue.select(self.set, self.rig.s, self.in[0], self.in[1], self.out[0], self.out[1], self.shape.rows, top_k, experts, scale, true, if (self.control) null else self.out[2]);
++        try self.rig.s.synchronize();
++    }
++
++    fn fail(self: *Pick, comptime fmt: []const u8, args: anytype) []const u8 {
++        return std.fmt.bufPrint(&self.msg, fmt, args) catch "(message too long)";
++    }
++
++    /// The stated rule (see pick_rule); the ranking only on finite logits, against float64 within 1e-5 of a choice.
++    pub fn check(self: *Pick, gate: g.Gate) !?[]const u8 {
++        const a = self.rig.gpu.gpa;
++        const rows = self.shape.rows;
++        const pb = rows * slots * 4;
++        self.got.clearRetainingCapacity();
++        try self.got.appendSlice(a, try self.rig.outputBytes());
++        const got = self.got.items;
++        try glue.select(self.set, self.rig.s, self.in[0], self.in[1], self.base, self.base + pb, rows, top_k, experts, scale, true, null);
++        const base = try self.rig.bytes(self.base, 2 * pb);
++        if (std.mem.indexOfDiff(u8, got[0 .. 2 * pb], base)) |at| return self.fail("pick and wts byte {d} differs from the launch without flat", .{at});
++        const pick = std.mem.bytesAsSlice(i32, got[0..pb]);
++        const wts = std.mem.bytesAsSlice(f32, got[pb .. 2 * pb]);
++        const flat = std.mem.bytesAsSlice(i32, got[2 * pb ..][0 .. rows * top_k * 4]);
++        for (0..rows) |r| {
++            for (0..top_k) |k| if (flat[r * top_k + k] != pick[r * slots + k])
++                return self.fail("row {d} flat pick {d} is {d}, pick's is {d}", .{ r, k, flat[r * top_k + k], pick[r * slots + k] });
++            if (pick[r * slots + top_k] != experts or wts[r * slots + top_k] != 1)
++                return self.fail("row {d}'s shared slot holds {d} at weight {e}", .{ r, pick[r * slots + top_k], wts[r * slots + top_k] });
++        }
++        if (gate == .nonfinite or !self.finite) return null;
++        for (0..rows) |r| if (self.rule(r, pick[r * slots ..][0..top_k], wts[r * slots ..][0..top_k])) |why| return why;
++        return null;
++    }
++
++    fn sigmoid(self: *const Pick, r: usize, e: usize) f64 {
++        return 1 / (1 + @exp(-@as(f64, self.logits[r * experts + e])));
++    }
++
++    fn choice(self: *const Pick, r: usize, e: usize) f64 {
++        return self.sigmoid(r, e) + @as(f64, self.bias[e]);
++    }
++
++    /// Row `r`'s picks in order: none clearly below an unpicked expert, an exact tie to the lower id, and the weights.
++    fn rule(self: *Pick, r: usize, pick: anytype, wts: anytype) ?[]const u8 {
++        var taken: [experts]bool = @splat(false);
++        var total: f64 = 0;
++        for (0..top_k) |k| {
++            const p = pick[k];
++            if (p < 0 or p >= experts or taken[@intCast(p)]) return self.fail("row {d} pick {d} is {d}", .{ r, k, p });
++            const e: usize = @intCast(p);
++            taken[e] = true;
++            const mine = self.choice(r, e);
++            for (0..experts) |o| if (!taken[o]) {
++                const theirs = self.choice(r, o);
++                if (theirs > mine + 1e-5) return self.fail("row {d} pick {d} is {d} ({d:.6}), expert {d} scores {d:.6}", .{ r, k, e, mine, o, theirs });
++                const tie = self.logits[r * experts + o] == self.logits[r * experts + e] and self.bias[o] == self.bias[e];
++                if (tie and o < e) return self.fail("row {d} pick {d} is {d}, tied with lower expert {d}", .{ r, k, e, o });
++            };
++            total += self.sigmoid(r, e);
++        }
++        for (0..top_k) |k| {
++            const want = self.sigmoid(r, @intCast(pick[k])) / total * @as(f64, scale);
++            const w: f64 = wts[k];
++            if (!(@abs(w - want) <= 1e-5 * want + 1e-7)) return self.fail("row {d} weight {d} is {e}, float64 gives {e}", .{ r, k, w, want });
++        }
++        return null;
++    }
++
++    pub fn count(self: *Pick) usize {
++        return self.shape.rows * (2 * slots + top_k);
++    }
++
++    pub fn reference(_: *Pick, _: []f64, _: []f64) !void {
++        return error.NoFloat64Reference;
++    }
++};
++
++const sum_rule = "every byte equal to tf_glm_put_slot, the routed slot rows' copy and tf_glm_combine's on the same " ++
++    "rows, weights and shared row, non-finite inputs included";
++
++/// Every decode row count up to one EXL3 chunk (cuda_moe.direct's limit), at GLM's dims and 8 + 1 slots.
++const sum_served = blk: {
++    @setEvalBranchQuota(8 * glm.exl3.chunk_rows);
++    var s: [glm.exl3.chunk_rows]c.Shape = undefined;
++    for (&s, 1..) |*x, r| x.* = .{ .rows = r, .n = dims, .k = slots };
++    break :blk s;
++};
++
++pub fn sumSpec(control: bool) c.Spec {
++    const name = if (control) "cuda glm tf_glm_combine_tail control: slot 0's routed rows in the shared row's place" else "cuda glm tf_glm_combine_tail (TF_GLM_MOE_DIRECT's slot sum)";
++    return .{ .name = name, .accum = .none, .depth = noSums, .out = .raw, .nan = .{ .stated = sum_rule }, .replaces = "tf_glm_put_slot, the EXL3 slot-row copy and tf_glm_combine", .served = &sum_served };
++}
++
++/// tf_glm_combine_tail as cuda_moe.fill launches it on the EXL3 experts' slot rows and the shared expert's row.
++pub const Combine = struct {
++    rig: rig_.Rig,
++    set: glue.Set,
++    put_slot: cuda.Function,
++    control: bool = false,
++    shape: c.Shape = undefined,
++    y: u64 = 0, // fp32 [rows][top_k][d], as the experts leave them
++    tail: u64 = 0, // fp32 [rows][d], the shared expert's row
++    wts: u64 = 0, // fp32 [rows][slots]
++    out: u64 = 0,
++    ey: u64 = 0, // the slot rows the replaced path builds: fp32 [rows][slots][d]
++    base: u64 = 0,
++    pattern: [4096]f32 = undefined,
++    got: std.ArrayList(u8) = .empty,
++    msg: [160]u8 = undefined,
++
++    const vt = g.hooks(Combine);
++
++    pub fn deinit(self: *Combine) void {
++        self.got.deinit(self.rig.gpu.gpa);
++        self.rig.deinit();
++    }
++
++    pub fn kernel(self: *Combine) g.Kernel {
++        return .{ .spec = sumSpec(self.control), .ctx = self, .vt = &vt, .control = if (self.control) .shapes else null };
++    }
++
++    /// A seeded 4,096-value pattern, each row turned its own way; weights as top-k leaves them; NaN, infs in rows 0-2.
++    pub fn prepare(self: *Combine, shape: c.Shape, fill: g.Fill, seed: u64) !bool {
++        if (shape.rows == 0 or shape.n == 0 or shape.n % 8 != 0 or shape.k != slots) return false;
++        self.rig.reset();
++        self.shape = shape;
++        const a = self.rig.gpu.gpa;
++        const rows = shape.rows;
++        const d = shape.n;
++        var m: Mix = .{ .x = seed };
++        for (&self.pattern) |*v| v.* = m.grid(-4, 4, 8192);
++        const ys = try a.alloc(f32, rows * top_k * d);
++        defer a.free(ys);
++        const tail = try a.alloc(f32, rows * d);
++        defer a.free(tail);
++        const w = try a.alloc(f32, rows * slots);
++        defer a.free(w);
++        for (0..rows * top_k) |i| self.row(ys[i * d ..][0..d], m.next());
++        for (0..rows) |r| self.row(tail[r * d ..][0..d], m.next());
++        for (0..rows) |r| {
++            for (0..top_k) |k| w[r * slots + k] = m.grid(0, scale, 4096);
++            w[r * slots + top_k] = 1;
++        }
++        if (fill == .nonfinite) {
++            const put = [_]f32{ std.math.nan(f32), std.math.inf(f32), -std.math.inf(f32) };
++            for (put, 0..) |v, r| if (r < rows) {
++                ys[(r * top_k + r) * d + 8 * r + 1] = v;
++                tail[r * d + 3] = v;
++            };
++        }
++        self.y = try self.rig.input(std.mem.sliceAsBytes(ys));
++        self.tail = try self.rig.input(std.mem.sliceAsBytes(tail));
++        self.wts = try self.rig.input(std.mem.sliceAsBytes(w));
++        self.out = try self.rig.output(rows * d * 4);
++        self.ey = try self.rig.scratch(rows * slots * d * 4);
++        self.base = try self.rig.scratch(rows * d * 4);
++        return true;
++    }
++
++    fn row(self: *const Combine, dst: []f32, turn: u64) void {
++        var at: usize = 0;
++        var from: usize = @intCast(turn % self.pattern.len);
++        while (at < dst.len) {
++            const n = @min(dst.len - at, self.pattern.len - from);
++            @memcpy(dst[at..][0..n], self.pattern[from..][0..n]);
++            at += n;
++            from = 0;
++        }
++    }
++
++    pub fn run(self: *Combine) !void {
++        const tail = if (self.control) self.y else self.tail;
++        try glue.combineTail(self.set, self.rig.s, self.y, tail, self.wts, self.out, self.shape.rows, self.shape.n, slots);
++        try self.rig.s.synchronize();
++    }
++
++    /// What a decode window ran before #3570: compact's slot-row copy, put_slot of the shared row, tf_glm_combine.
++    pub fn replaced(self: *Combine) ![]const u8 {
++        const rows = self.shape.rows;
++        const d = self.shape.n;
++        const s = self.rig.s;
++        const m: cuda.abi.Memcpy2D = .{ .src = self.y, .src_pitch = top_k * d * 4, .dst = self.ey, .dst_pitch = slots * d * 4, .width = top_k * d * 4, .height = rows };
++        try s.d.check(s.d.api.cuMemcpy2DAsync_v2(&m, s.handle), "the routed slot rows");
++        var a: cuda.Args = .{};
++        a.add(self.tail);
++        a.add(self.ey);
++        for ([_]usize{ rows, d, slots, top_k, 0 }) |v| a.add(@as(c_int, @intCast(v)));
++        try cuda.launch.launch(self.put_slot, .{ .grid = .{ .x = @intCast((rows * d + 255) / 256) }, .block = .{ .x = 256 } }, s, &a);
++        try glue.combine(self.set, s, self.ey, true, self.wts, self.base, rows, d, slots);
++        return self.rig.bytes(self.base, rows * d * 4);
++    }
++
++    /// Gate 1's stated rule: the bytes on the planted inputs equal the replaced path's.
++    pub fn check(self: *Combine, _: g.Gate) !?[]const u8 {
++        self.got.clearRetainingCapacity();
++        try self.got.appendSlice(self.rig.gpu.gpa, try self.rig.outputBytes());
++        const want = try self.replaced();
++        const at = std.mem.indexOfDiff(u8, self.got.items, want) orelse return null;
++        return std.fmt.bufPrint(&self.msg, "byte {d} of {d} differs from the replaced path's", .{ at, want.len }) catch "differs";
++    }
++
++    pub fn count(self: *Combine) usize {
++        return self.shape.rows * self.shape.n;
++    }
++
++    pub fn reference(_: *Combine, _: []f64, _: []f64) !void {
++        return error.NoFloat64Reference;
++    }
++};
++
++/// The two kernels and their controls on the heap, from their own glm_glue and glm_ops images.
++pub const Set = struct {
++    gpa: std.mem.Allocator,
++    glue_mod: cuda.Module,
++    ops_mod: cuda.Module,
++    fns: glue.Kernels,
++    picks: [2]Pick = undefined,
++    sums: [2]Combine = undefined,
++
++    pub fn init(gpu: check_.Gpu, s: cuda.Stream, a: std.mem.Allocator, list: *std.ArrayList(g.Kernel)) !*Set {
++        const set = try gpu.gpa.create(Set);
++        errdefer gpu.gpa.destroy(set);
++        var glue_mod = try cuda.Module.load(gpu.d, cuda.kernels.glm_glue);
++        errdefer glue_mod.unload();
++        var ops_mod = try cuda.Module.load(gpu.d, cuda.kernels.glm_ops);
++        errdefer ops_mod.unload();
++        set.* = .{ .gpa = gpu.gpa, .glue_mod = glue_mod, .ops_mod = ops_mod, .fns = try glue.Kernels.load(glue_mod) };
++        const put_slot = try ops_mod.function("tf_glm_put_slot");
++        for (&set.picks, [_]bool{ false, true }) |*x, control| x.* = .{ .rig = .{ .gpu = gpu, .s = s }, .set = .{ .glue = &set.fns }, .control = control };
++        for (&set.sums, [_]bool{ false, true }) |*x, control| x.* = .{ .rig = .{ .gpu = gpu, .s = s }, .set = .{ .glue = &set.fns }, .put_slot = put_slot, .control = control };
++        for (&set.picks) |*x| try list.append(a, x.kernel());
++        for (&set.sums) |*x| try list.append(a, x.kernel());
++        return set;
++    }
++
++    pub fn deinit(set: *Set) void {
++        for (&set.sums) |*x| x.deinit();
++        for (&set.picks) |*x| x.deinit();
++        set.ops_mod.unload();
++        set.glue_mod.unload();
++        set.gpa.destroy(set);
++    }
++};
+diff --git a/zig/tests/cuda/glm_ref_tests.zig b/zig/tests/cuda/glm_ref_tests.zig
+index 8cfb8015a..58667a380 100644
+--- a/zig/tests/cuda/glm_ref_tests.zig
++++ b/zig/tests/cuda/glm_ref_tests.zig
+@@ -136,7 +136,7 @@ fn routers(r: *Rig, set: glue.Set) !void {
+     for (bias) |*b| b.* = (r.rng.float(f32) * 2 - 1) * 0.05;
+     const pick = try r.zeros(m * (top_k + 1) * 4);
+     const wts = try r.zeros(m * (top_k + 1) * 4);
+-    try glue.select(set, r.s, full, try r.dev(std.mem.sliceAsBytes(bias)), pick, wts, m, top_k, ne, scale, true);
++    try glue.select(set, r.s, full, try r.dev(std.mem.sliceAsBytes(bias)), pick, wts, m, top_k, ne, scale, true, null);
+     const logits = try r.back(full, m * ne * 4);
+     const got_pick = try r.back(pick, m * (top_k + 1) * 4);
+     const got_wts = try r.back(wts, m * (top_k + 1) * 4);

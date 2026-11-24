@@ -1,0 +1,96 @@
+From 864ff1d57617106fb30c7378b418bd1373fbb07b Mon Sep 17 00:00:00 2001
+From: MiaAI_Lab <mia.ailab1@gmail.com>
+Date: Fri, 20 Nov 2026 02:03:20 +0200
+Subject: [PATCH 12/39] fix: waiting field in Pages and glm-exl3-layer args
+
+---
+ zig/src/families/glm/cuda_pages.zig     |  1 +
+ zig/tests/cuda/exl3_prompt_k6_tests.zig | 12 +++++++-----
+ zig/tests/cuda/glm_exl3_layer_tests.zig |  2 +-
+ zig/tests/cuda/main.zig                 |  2 +-
+ 4 files changed, 10 insertions(+), 7 deletions(-)
+
+diff --git a/zig/src/families/glm/cuda_pages.zig b/zig/src/families/glm/cuda_pages.zig
+index e87014daf..b05ff6972 100644
+--- a/zig/src/families/glm/cuda_pages.zig
++++ b/zig/src/families/glm/cuda_pages.zig
+@@ -76,6 +76,7 @@ pub const Pages = struct {
+     leader: bool,
+     poison: bool, // TF_KV_POISON=1: a stream's pages start as NaN, so a row read before its write shows in the reply
+     prompts: ?kp.Prompts = null, // TF_KV_SHARE: the shared prompt store over this pool (rank 0's), from the server
++    waiting: ?usize = null, // the page count of the request admission is holding back (for one-line wait logs)
+ 
+     /// `streams` sequences from slot 0 on `pages` pages: the engine's own (`ownSequence`) placed, the others made now.
+     pub fn init(gpa: std.mem.Allocator, e: *Engine, l: kv.Layout, streams: usize, pages: usize, leader: bool) !*Pages {
+diff --git a/zig/tests/cuda/exl3_prompt_k6_tests.zig b/zig/tests/cuda/exl3_prompt_k6_tests.zig
+index 50d674172..2d738bde8 100644
+--- a/zig/tests/cuda/exl3_prompt_k6_tests.zig
++++ b/zig/tests/cuda/exl3_prompt_k6_tests.zig
+@@ -178,14 +178,16 @@ pub const Prompt = struct {
+     per: usize,
+     b: Bufs,
+     sc: ex.prompt.Scratch,
++    y: u64,
+     p: cuda.grouped.Plan,
+     pub fn init(c: *Ctx, l: ex.Layer, x: u64, pk: u64, rows: usize, per: usize) !Prompt {
+         var b: Bufs = .{ .d = c.gpu.d, .gpa = c.gpu.gpa };
+         errdefer b.deinit();
+         const cap: usize = @min(rows, per);
+         const sc = try ex.prompt.scratch(try b.alloc(try ex.prompt.bytes(l, cap, K)), l, cap, K);
++        const y = try b.alloc(cap * K * D * 4);
+         const p = try plan(&b, cap * K);
+-        return .{ .c = c, .l = l, .x = x, .pk = pk, .rows = rows, .per = per, .b = b, .sc = sc, .p = p };
++        return .{ .c = c, .l = l, .x = x, .pk = pk, .rows = rows, .per = per, .b = b, .sc = sc, .y = y, .p = p };
+     }
+     pub fn deinit(p: *Prompt) void {
+         p.b.deinit();
+@@ -194,8 +196,8 @@ pub const Prompt = struct {
+         var at: usize = 0;
+         while (at < p.rows) : (at += p.per) {
+             const n: usize = @min(p.per, p.rows - at);
+-            try p.c.exp.prompt.run(p.c.exp, p.c.router, p.c.s, p.l, p.x + at * D * 2, D, p.pk + at * K * 4, n, p.sc, p.p);
+-            if (out) |o| try download(p.c, p.sc.y, o[at * K * D ..][0 .. n * K * D]);
++            try p.c.exp.prompt.run(p.c.exp, p.c.router, p.c.s, p.l, p.x + at * D * 2, D, p.pk + at * K * 4, n, p.sc, p.p, p.y, null);
++            if (out) |o| try download(p.c, p.y, o[at * K * D ..][0 .. n * K * D]);
+         }
+     }
+     /// The gate/up (which 0) or down (1) launch of the last call again, as run() makes it.
+@@ -206,10 +208,10 @@ pub const Prompt = struct {
+         const items = cuda.grouped.maxItems(n * K, E, ex.prompt.tile);
+         var a: cuda.Args = .{};
+         if (which == 0) {
+-            inline for (.{ p.sc.xg, p.sc.xu, p.l.gate, p.l.up, p.p.items, p.p.counts, p.p.members, p.l.svh_g, p.l.svh_u, p.l.suh_d, p.sc.xd, @as(i32, D), @as(i32, N), @as(i32, if (p.l.shared_input) K else 1), p.l.limit, p.l.act_mode }) |v| a.add(v);
++            inline for (.{ p.sc.xg, p.sc.xu, p.l.gate, p.l.up, p.p.items, p.p.counts, p.p.members, p.l.svh_g, p.l.svh_u, p.l.suh_d, p.sc.xd, @as(i32, D), @as(i32, N), @as(i32, if (p.l.shared_input) K else 1), p.l.limit, p.l.act_mode, @as(i32, -1) }) |v| a.add(v);
+             try cuda.launch.launch(if (w.gu == 6) k.gateup_k6 else k.gateup, .{ .grid = .{ .x = N / 128, .y = @intCast(items), .z = 1 }, .block = .{ .x = 256 } }, p.c.s, &a);
+         } else {
+-            inline for (.{ p.sc.xd, p.l.down, p.p.items, p.p.counts, p.p.members, p.l.svh_d, p.sc.y, @as(i32, N), @as(i32, D), @as(i32, K) }) |v| a.add(v);
++            inline for (.{ p.sc.xd, p.l.down, p.p.items, p.p.counts, p.p.members, p.l.svh_d, p.y, @as(i32, N), @as(i32, D), @as(i32, -1) }) |v| a.add(v);
+             try cuda.launch.launch(if (w.d == 6) k.down_k6 else k.down, .{ .grid = .{ .x = D / 256, .y = @intCast(items), .z = 1 }, .block = .{ .x = 256 } }, p.c.s, &a);
+         }
+     }
+diff --git a/zig/tests/cuda/glm_exl3_layer_tests.zig b/zig/tests/cuda/glm_exl3_layer_tests.zig
+index 38fc5ca83..05e00b7c0 100644
+--- a/zig/tests/cuda/glm_exl3_layer_tests.zig
++++ b/zig/tests/cuda/glm_exl3_layer_tests.zig
+@@ -191,7 +191,7 @@ pub fn run(gpu: Gpu, dir: []const u8, layer_s: []const u8, rank_s: []const u8, w
+     defer pm.unload();
+     var k = try glm.exl3.Kernels.load(gpu.d);
+     defer k.unload();
+-    var ek = try glm.experts.Kernels.load(gpu.d, pm, @intCast(try gpu.ctx.attribute(.multiprocessor_count)));
++    var ek = try glm.experts.Kernels.load(gpu.d, pm, @intCast(try gpu.ctx.attribute(.multiprocessor_count)), null);
+     defer ek.unload();
+ 
+     // the pool: the first and last experts and 14 more, distinct
+diff --git a/zig/tests/cuda/main.zig b/zig/tests/cuda/main.zig
+index 39ac8fbe1..3c9b88582 100644
+--- a/zig/tests/cuda/main.zig
++++ b/zig/tests/cuda/main.zig
+@@ -246,7 +246,7 @@ fn run(gpu: check.Gpu, cmd: []const u8, rest: []const [:0]const u8) !void {
+     if (std.mem.eql(u8, cmd, "affine4-decode")) return affine4_decode_tests.run(gpu);
+     if (std.mem.eql(u8, cmd, "w4a8")) return w4a8_tests.run(gpu);
+     if (std.mem.eql(u8, cmd, "glm-exl3")) return glm_exl3_tests.run_(gpu);
+-    if (std.mem.eql(u8, cmd, "glm-exl3-layer")) return glm_exl3_layer_tests.run(gpu, try arg(rest, 0), if (rest.len > 1) try std.fmt.parseInt(usize, rest[1], 10) else 0);
++    if (std.mem.eql(u8, cmd, "glm-exl3-layer")) return glm_exl3_layer_tests.run(gpu, try arg(rest, 0), if (rest.len > 1) rest[1] else "0", if (rest.len > 2) rest[2] else "0", if (rest.len > 3) rest[3] else "1");
+     if (std.mem.eql(u8, cmd, "glm-kda-pad-split")) return glm_kda_pad_check.run(gpu);
+     if (std.mem.eql(u8, cmd, "glm-mm-fixed")) return @import("glm_mm_fixed_tests.zig").run(gpu);
+     if (std.mem.eql(u8, cmd, "glm-mm-bench")) return @import("glm_mm_bench.zig").run(gpu);

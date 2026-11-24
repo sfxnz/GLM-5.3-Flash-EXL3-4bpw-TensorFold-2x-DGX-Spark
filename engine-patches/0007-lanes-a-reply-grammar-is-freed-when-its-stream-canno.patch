@@ -1,0 +1,54 @@
+From e4013fe97f80ebe3e4530c6a312c8c51948a3c46 Mon Sep 17 00:00:00 2001
+From: SvangenStudios <svangenstudios@outlook.com>
+Date: Fri, 20 Nov 2026 01:39:47 +0200
+Subject: [PATCH 07/39] lanes: a reply grammar is freed when its stream cannot
+ start
+
+The grammar was built inside Stream.init's argument list, and only a started job frees it, so a Stream.init that failed
+after the build leaked it. It is now built first and freed on that failure. Only out-of-memory reaches this path.
+
+Adapted to this engine by Mia's AI Lab from the second half of SvangenStudios' 0039 on
+https://github.com/MiaAI-Lab/DeepSeek-V4.1-Flash-1017-4x-DGX-Sparks-TensorFold (PR #28); the use-after-free that PR's
+first half fixes is not present here.
+---
+ zig/src/core/lane_stream.zig | 13 ++++++++-----
+ 1 file changed, 8 insertions(+), 5 deletions(-)
+
+diff --git a/zig/src/core/lane_stream.zig b/zig/src/core/lane_stream.zig
+index e6fc84fe4..4e223f168 100644
+--- a/zig/src/core/lane_stream.zig
++++ b/zig/src/core/lane_stream.zig
+@@ -35,6 +35,12 @@ pub fn open(h: *LaneHost, job: *Job) bool {
+         job.custom = ps.make(ps.ctx, h.gpa, r.prompt, r.eos) catch return !h.drop(job, "the drafter could not start");
+     } else job.proposer = lanes.SuffixLookup.init(h.gpa, .{ .min_match = h.min_match }) catch return !h.drop(job, "the drafter could not start");
+     const recall = recalls.reader(h, job);
++    // Ours until Stream.init succeeds: the stream only borrows it, and a stream that never starts never frees it.
++    const reply_grammar = if (r.structure) |st| h.constraint(st) catch |e| {
++        freeProposer(h, job);
++        recalls.release(job);
++        return !h.drop(job, if (e == error.OutOfMemory) "out of memory" else "the reply's grammar could not start (xgrammar)");
++    } else null;
+     job.stream = lanes.Stream.init(h.gpa, .{
+         .id = "request",
+         .prompt = r.prompt,
+@@ -63,11 +69,7 @@ pub fn open(h: *LaneHost, job: *Job) bool {
+         .history_len = r.history_len,
+         .shared_prefixes = r.shared_prefixes,
+         .reuse = reuse,
+-        .grammar = if (r.structure) |st| h.constraint(st) catch |e| {
+-            freeProposer(h, job);
+-            recalls.release(job);
+-            return !h.drop(job, if (e == error.OutOfMemory) "out of memory" else "the reply's grammar could not start (xgrammar)");
+-        } else null,
++        .grammar = reply_grammar,
+         .decode_spans = h.spans(r),
+         .decide = r.decide,
+         .untaught = r.untaught,
+@@ -76,6 +78,7 @@ pub fn open(h: *LaneHost, job: *Job) bool {
+     }) catch {
+         freeProposer(h, job);
+         recalls.release(job);
++        if (reply_grammar) |g| g.deinit(h.gpa);
+         return !h.drop(job, "out of memory");
+     };
+     job.started = true;

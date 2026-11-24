@@ -1,0 +1,1281 @@
+From f8b3817b9dbe210115bc6ee99677f1451940de02 Mon Sep 17 00:00:00 2001
+From: sfxnz <248329760+sfxnz@users.noreply.github.com>
+Date: Mon, 23 Nov 2026 16:18:14 +0000
+Subject: [PATCH 38/39] glm cuda: zero-thrash device-table shared verify graphs
+ (KDA/DSA/KV_SHARD pack), batched shared sampled/greedy draws (Mia 0072), and
+ shared TF_GLM_PROF (Mia 0099)
+
+---
+ zig/kernels/cuda/glm_glue_attn.cuh          |  21 ++
+ zig/kernels/cuda/glm_glue_index.cuh         |  31 ++
+ zig/kernels/cuda/glm_glue_rows.cuh          |   6 +
+ zig/kernels/cuda/glm_kda.cu                 |  26 ++
+ zig/src/cuda/kda.zig                        |  39 +-
+ zig/src/families/glm/cuda_dsa_block.zig     |  34 ++
+ zig/src/families/glm/cuda_engine.zig        |  56 ++-
+ zig/src/families/glm/cuda_engine_pick.zig   |  15 +-
+ zig/src/families/glm/cuda_engine_prof.zig   |  18 +
+ zig/src/families/glm/cuda_forward.zig       |  14 +-
+ zig/src/families/glm/cuda_glue.zig          |  18 +
+ zig/src/families/glm/cuda_graphs.zig        |  79 +++-
+ zig/src/families/glm/cuda_kda_block.zig     |   7 +
+ zig/src/families/glm/cuda_kv_shard_attn.zig |  46 +++
+ zig/src/families/glm/cuda_latent.zig        |  19 +
+ zig/src/families/glm/cuda_sampler.zig       |  36 +-
+ zig/src/families/glm/cuda_shared.zig        |  20 +
+ zig/src/families/glm/cuda_shared_table.zig  | 387 ++++++++++++++++++++
+ 18 files changed, 850 insertions(+), 22 deletions(-)
+ create mode 100644 zig/src/families/glm/cuda_shared_table.zig
+
+diff --git a/zig/kernels/cuda/glm_glue_attn.cuh b/zig/kernels/cuda/glm_glue_attn.cuh
+index af2fc3917..bf5baff09 100644
+--- a/zig/kernels/cuda/glm_glue_attn.cuh
++++ b/zig/kernels/cuda/glm_glue_attn.cuh
+@@ -223,6 +223,27 @@ extern "C" __global__ void __launch_bounds__(128)
+                        static_cast<int64_t>(blockIdx.x) - g.row0);
+ }
+ 
++// Device-table variants for zero-thrash shared verify CUDA graphs.
++extern "C" __global__ void __launch_bounds__(256)
++    tf_glm_chunks_16_fp8_paged_segs_ptr(int64_t heads, int64_t w, float scale, int sparse, int64_t pstep,
++                                        const glm_attn::AttnSegs* tp) {
++  glm_pdl::enter();
++  const glm_attn::AttnSeg& g = glm_attn::seg_of(*tp, static_cast<int>(blockIdx.x));
++  const int64_t c = blockIdx.z;
++  if (c >= g.nch) return;
++  glm_attn::chunks_wide<16, true, 0, false, true>(g.qa, reinterpret_cast<const __nv_bfloat16*>(g.lc), g.pos, g.tok,
++                                                  g.cnt, g.po, g.pm, g.pl, g.rows, heads, w, scale, sparse, g.pt, pstep,
++                                                  g.scales, 1, 0, static_cast<int64_t>(blockIdx.x) - g.row0, c);
++}
++
++extern "C" __global__ void __launch_bounds__(128)
++    tf_glm_merge_segs_ptr(int64_t heads, int sparse, const glm_attn::AttnSegs* tp) {
++  glm_pdl::enter();
++  const glm_attn::AttnSeg& g = glm_attn::seg_of(*tp, static_cast<int>(blockIdx.x));
++  glm_attn::merge_body(g.po, g.pm, g.pl, g.out, g.cnt, g.rows, heads, g.nch, sparse,
++                       static_cast<int64_t>(blockIdx.x) - g.row0);
++}
++
+ // sparse._scores, block (row, L pool blocks) of 4 warps, 16 pools a warp: sum_h w relu(dots scale), -inf past visible.
+ extern "C" __global__ void __launch_bounds__(128)
+     tf_glm_scores(const __nv_bfloat16* qi, const __nv_bfloat16* wts, int64_t w_stride, const __nv_bfloat16* pk,
+diff --git a/zig/kernels/cuda/glm_glue_index.cuh b/zig/kernels/cuda/glm_glue_index.cuh
+index 29596a687..afa44f568 100644
+--- a/zig/kernels/cuda/glm_glue_index.cuh
++++ b/zig/kernels/cuda/glm_glue_index.cuh
+@@ -196,6 +196,37 @@ extern "C" __global__ void __launch_bounds__(256) tf_glm_copy_segs(const tf_glm_
+     c.dst[i] = c.src[i];
+ }
+ 
++// Device-table variants for zero-thrash shared verify CUDA graphs.
++extern "C" __global__ void __launch_bounds__(512)
++    tf_glm_lat_write_fp8_paged_segs_ptr(int64_t stride, int64_t lat_ps, const glm_wsegs::Segs* tp) {
++  glm_pdl::enter();
++  const glm_wsegs::Seg& g = glm_wsegs::by_row(*tp, static_cast<int>(blockIdx.x));
++  glm_latw::write_fp8_paged(g.lat, stride, g.cache, g.scales, g.pos, g.lpt, lat_ps,
++                            static_cast<int64_t>(blockIdx.x) - g.row0);
++}
++extern "C" __global__ void __launch_bounds__(32)
++    tf_glm_index_write_segs_ptr(int64_t k_stride, const __nv_bfloat16* lnw, const __nv_bfloat16* lnb, float eps,
++                                const glm_wsegs::Segs* tp) {
++  glm_pdl::enter();
++  const glm_wsegs::Seg& g = glm_wsegs::by_row(*tp, static_cast<int>(blockIdx.x));
++  glm_idxw::index_write(g.kr, k_stride, g.gr, lnw, lnb, g.ik, g.ig, g.pos, eps,
++                        static_cast<int64_t>(blockIdx.x) - g.row0);
++}
++extern "C" __global__ void __launch_bounds__(32)
++    tf_glm_pool_keys_segs_ptr(const __nv_bfloat16* ape, int64_t pk_ps, const glm_wsegs::Segs* tp) {
++  glm_pdl::enter();
++  const glm_wsegs::Seg& g = glm_wsegs::by_block(*tp, static_cast<int>(blockIdx.x));
++  const int64_t rel = static_cast<int64_t>(blockIdx.x) - g.b0;
++  if (rel < 0 || rel >= g.rows / 4 + 2) return;
++  glm_idxw::pool_keys(g.ik, g.ig, ape, g.pk, g.pos, g.rows, g.pt, pk_ps, rel);
++}
++extern "C" __global__ void __launch_bounds__(256) tf_glm_copy_segs_ptr(const tf_glm_copies* tp) {
++  glm_pdl::enter();
++  const tf_glm_copy& c = tp->c[blockIdx.y];
++  for (int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x; i < c.n; i += (int64_t)gridDim.x * blockDim.x)
++    c.dst[i] = c.src[i];
++}
++
+ namespace glm_index {
+ 
+ // sparse._order_key: a score's bits as a uint32 whose unsigned order is the scores' (-0 counted as +0).
+diff --git a/zig/kernels/cuda/glm_glue_rows.cuh b/zig/kernels/cuda/glm_glue_rows.cuh
+index b95d34ccb..034e9e033 100644
+--- a/zig/kernels/cuda/glm_glue_rows.cuh
++++ b/zig/kernels/cuda/glm_glue_rows.cuh
+@@ -306,6 +306,12 @@ extern "C" __global__ void __launch_bounds__(1024) tf_glm_top1_sums(const unsign
+   glm_pdl::enter();
+   glm_top1<true>(logits, n, lo, out);
+ }
++// A window's greedy picks in one launch (MiaAI-Lab patch 0072, Apache-2.0): block r runs tf_glm_top1 on row r.
++extern "C" __global__ void __launch_bounds__(1024) tf_glm_top1_rows(const unsigned short* logits, int64_t n,
++                                                                     int64_t ld, unsigned lo, unsigned* out) {
++  glm_pdl::enter();
++  glm_top1<false>(logits + static_cast<int64_t>(blockIdx.x) * ld, n, lo, out + static_cast<int64_t>(blockIdx.x) * 4);
++}
+ 
+ // The leader's step for the other ranks, written to the link's buffer from launch arguments (cuda_follow's Link.send).
+ struct tf_glm_words {
+diff --git a/zig/kernels/cuda/glm_kda.cu b/zig/kernels/cuda/glm_kda.cu
+index f363dfa0c..c2fadf09a 100644
+--- a/zig/kernels/cuda/glm_kda.cu
++++ b/zig/kernels/cuda/glm_kda.cu
+@@ -123,3 +123,29 @@ extern "C" __global__ void __launch_bounds__(128) tf_glm_kda_out_segs(
+     if (static_cast<int>(blockIdx.x) >= g.rows) return;
+     out_kernel_body(H, g.y, g.G, g_stride, norm_w, eps, g.out);
+ }
++
++// Device-table variants for zero-thrash shared verify CUDA graphs: segment descriptors (including KDA state_in/out
++// ping-pong parities and per-stream row counts) are uploaded once per round before graph replay.
++extern "C" __global__ void __launch_bounds__(512) tf_glm_kda_prep_segs_ptr(
++        int H, int p_stride, int b_off, int a_stride, const float* __restrict__ cw, const float* __restrict__ a_log,
++        const float* __restrict__ dt_bias, float lower, const KdaSegs* tp) {
++    glm_pdl::enter();
++    const KdaSeg& g = tp->s[blockIdx.z];
++    if (static_cast<int>(blockIdx.x) >= g.rows) return;
++    prep_kernel_body(H, g.P, p_stride, b_off, g.A, a_stride, g.cs, cw, a_log, dt_bias, lower, g.q, g.k_save, g.v_save,
++                     g.g_save, g.b_save);
++}
++
++extern "C" __global__ void __launch_bounds__(256) tf_glm_kda_step_segs_ptr(int H, const KdaSegs* tp) {
++    glm_pdl::enter();
++    const KdaSeg& g = tp->s[blockIdx.z];
++    step_kernel_body<8, 16>(H, g.state_in, g.q, g.k_save, g.v_save, g.g_save, g.b_save, g.rows, g.y, g.state_out);
++}
++
++extern "C" __global__ void __launch_bounds__(128) tf_glm_kda_out_segs_ptr(
++        int H, int g_stride, const __nv_bfloat16* __restrict__ norm_w, float eps, const KdaSegs* tp) {
++    glm_pdl::enter();
++    const KdaSeg& g = tp->s[blockIdx.z];
++    if (static_cast<int>(blockIdx.x) >= g.rows) return;
++    out_kernel_body(H, g.y, g.G, g_stride, norm_w, eps, g.out);
++}
+diff --git a/zig/src/cuda/kda.zig b/zig/src/cuda/kda.zig
+index a927821a8..87813915b 100644
+--- a/zig/src/cuda/kda.zig
++++ b/zig/src/cuda/kda.zig
+@@ -29,6 +29,9 @@ pub const Kernels = struct {
+     prep_segs: ?cuda.Function = null, // GLM opt-in (loadGlm): shared window's segments in one launch each
+     step_segs: ?cuda.Function = null,
+     out_segs: ?cuda.Function = null,
++    prep_segs_ptr: ?cuda.Function = null, // device-table variants for zero-thrash shared verify CUDA graphs
++    step_segs_ptr: ?cuda.Function = null,
++    out_segs_ptr: ?cuda.Function = null,
+     pdl: bool, // dependent launches (each entry opens with glm_pdl::enter()); the loader's caller opts in
+     step_warps: u32 = 0, // TF_GLM_KDA_STEP_WARPS: 0 (unset or auto) by rows (stepWarps); 8, 4 or 2 at every row count
+ 
+@@ -40,6 +43,9 @@ pub const Kernels = struct {
+         k.prep_segs = null;
+         k.step_segs = null;
+         k.out_segs = null;
++        k.prep_segs_ptr = null;
++        k.step_segs_ptr = null;
++        k.out_segs_ptr = null;
+         k.pdl = false;
+         k.step_warps = 8;
+         return k;
+@@ -48,7 +54,7 @@ pub const Kernels = struct {
+     /// GLM's fatbin carries the 2/4-warp decode step variants and segment-batched shared-window entries too.
+     pub fn loadGlm(m: cuda.Module) !Kernels {
+         var k = try load(m);
+-        inline for (.{ "step4", "step2", "prep_segs", "step_segs", "out_segs" }) |name| @field(k, name) = try m.function("tf_glm_kda_" ++ name);
++        inline for (.{ "step4", "step2", "prep_segs", "step_segs", "out_segs", "prep_segs_ptr", "step_segs_ptr", "out_segs_ptr" }) |name| @field(k, name) = try m.function("tf_glm_kda_" ++ name);
+         k.step_warps = stepWarpsSetting(if (std.c.getenv("TF_GLM_KDA_STEP_WARPS")) |v| std.mem.span(v) else null);
+         return k;
+     }
+@@ -109,6 +115,37 @@ pub fn chainSegs(ks: *const Kernels, stream: cuda.Stream, c: Chain, t: *const Se
+     try cuda.launch.launch(out_segs, .{ .grid = .{ .x = @intCast(most), .y = @intCast(c.heads), .z = z }, .block = .{ .x = dv }, .pdl = ks.pdl }, stream, &o);
+ }
+ 
++/// Device-table variant of chainSegs for zero-thrash shared verify CUDA graphs: `segs_dev` points to a device Segs.
++pub fn chainSegsPtr(ks: *const Kernels, stream: cuda.Stream, c: Chain, segs_dev: u64, n: usize, most: usize) !void {
++    const prep_segs = ks.prep_segs_ptr orelse return error.FormatNotLoaded;
++    const step_segs = ks.step_segs_ptr orelse return error.FormatNotLoaded;
++    const out_segs = ks.out_segs_ptr orelse return error.FormatNotLoaded;
++    if (n == 0 or n > max_segs) return error.TooManySegments;
++    if (most == 0) return;
++    const h: c_int = @intCast(c.heads);
++    const z: u32 = @intCast(n);
++    var a: cuda.Args = .{};
++    a.add(h);
++    a.add(@as(c_int, @intCast(c.p_stride)));
++    a.add(@as(c_int, @intCast(c.b_off)));
++    a.add(@as(c_int, @intCast(c.a_stride)));
++    for ([_]u64{ c.conv_w, c.a_log, c.dt_bias }) |v| a.add(v);
++    a.add(c.lower);
++    a.add(segs_dev);
++    try cuda.launch.launch(prep_segs, .{ .grid = .{ .x = @intCast(most), .y = @intCast(c.heads), .z = z }, .block = .{ .x = 512 }, .pdl = ks.pdl }, stream, &a);
++    var b: cuda.Args = .{};
++    b.add(h);
++    b.add(segs_dev);
++    try cuda.launch.launch(step_segs, .{ .grid = .{ .x = @intCast(c.heads), .y = dv / 4 / 8, .z = z }, .block = .{ .x = 8 * 32 }, .pdl = ks.pdl }, stream, &b);
++    var o: cuda.Args = .{};
++    o.add(h);
++    o.add(@as(c_int, @intCast(c.g_stride)));
++    o.add(c.norm_w);
++    o.add(c.eps);
++    o.add(segs_dev);
++    try cuda.launch.launch(out_segs, .{ .grid = .{ .x = @intCast(most), .y = @intCast(c.heads), .z = z }, .block = .{ .x = dv }, .pdl = ks.pdl }, stream, &o);
++}
++
+ test "a shared window's KDA segments fit glm_kda.cu's table and one launch's arguments" {
+     try std.testing.expectEqual(@as(usize, 112), @sizeOf(Seg));
+     try std.testing.expectEqual(@as(usize, 16 * 112), @sizeOf(Segs));
+diff --git a/zig/src/families/glm/cuda_dsa_block.zig b/zig/src/families/glm/cuda_dsa_block.zig
+index 12a9c550f..49ef3196f 100644
+--- a/zig/src/families/glm/cuda_dsa_block.zig
++++ b/zig/src/families/glm/cuda_dsa_block.zig
+@@ -224,6 +224,33 @@ pub fn writeSegs(k: Kernels, stream: cuda.Stream, l: Layer, t: *const WriteSegs,
+     try cuda_pdl.launch(set.glue.pool_keys_segs, .{ .grid = .{ .x = @intCast(blocks) }, .block = .{ .x = 32 } }, stream, &p);
+ }
+ 
++/// Device-table variant of writeSegs for zero-thrash shared verify CUDA graphs.
++pub fn writeSegsPtr(k: Kernels, stream: cuda.Stream, l: Layer, segs_dev: u64, rows: usize, blocks: usize, lat_ps: u64, pk_ps: u64) !void {
++    const set = k.set;
++    const ix = l.index;
++    var stamp = prof.span(k.prof, stream, .cache_write);
++    var a: cuda.Args = .{};
++    a.add(@as(i64, @intCast(l.lw)));
++    a.add(@as(i64, @intCast(lat_ps)));
++    a.add(segs_dev);
++    try cuda_pdl.launch(set.glue.lat_write_fp8_paged_segs_ptr, .{ .grid = .{ .x = @intCast(rows) }, .block = .{ .x = 512 } }, stream, &a);
++    stamp.end();
++    stamp = prof.span(k.prof, stream, .index_update);
++    defer stamp.end();
++    var b: cuda.Args = .{};
++    b.add(@as(i64, @intCast(ix.d + ix.heads)));
++    b.add(ix.ln_w);
++    b.add(ix.ln_b);
++    b.add(@as(f32, 1e-6));
++    b.add(segs_dev);
++    try cuda_pdl.launch(set.glue.index_write_segs_ptr, .{ .grid = .{ .x = @intCast(rows) }, .block = .{ .x = 32 } }, stream, &b);
++    var p: cuda.Args = .{};
++    p.add(ix.ape);
++    p.add(@as(i64, @intCast(pk_ps)));
++    p.add(segs_dev);
++    try cuda_pdl.launch(set.glue.pool_keys_segs_ptr, .{ .grid = .{ .x = @intCast(blocks) }, .block = .{ .x = 32 } }, stream, &p);
++}
++
+ test "a shared window's cache-write segments fit glm_glue_index.cuh's table and one launch's arguments" {
+     try std.testing.expectEqual(@as(usize, 104), @sizeOf(WriteSeg));
+     try std.testing.expectEqual(@as(usize, 16 * 104 + 8), @sizeOf(WriteSegs));
+@@ -245,6 +272,13 @@ pub fn attendSegs(k: Kernels, stream: cuda.Stream, l: Layer, t: *const latent.At
+     try latent.attentionSegs(k.set, stream, t, rows, l.heads, l.lw, if (kind == .sparse) sparse.width else 0, attnScale(l), lat_ps, kind == .sparse);
+ }
+ 
++/// Device-table variant of attendSegs for zero-thrash shared verify CUDA graphs.
++pub fn attendSegsPtr(k: Kernels, stream: cuda.Stream, l: Layer, segs_dev: u64, rows: usize, most_nch: usize, lat_ps: u64, kind: SegsKind) !void {
++    const stamp = prof.span(k.prof, stream, .mla);
++    defer stamp.end();
++    try latent.attentionSegsPtr(k.set, stream, segs_dev, rows, most_nch, l.heads, l.lw, if (kind == .sparse) sparse.width else 0, attnScale(l), lat_ps, kind == .sparse);
++}
++
+ /// One sequence's rows r0..r0 + rows at pos: latent and index keys written, dense then sparse attention into s.ol.
+ pub fn attend(k: Kernels, stream: cuda.Stream, l: Layer, c: Caches, s: Scratch, r0: usize, rows: usize, pos: u64, host_pos: usize, nch: usize, part_rows: usize) !void {
+     const set = k.set;
+diff --git a/zig/src/families/glm/cuda_engine.zig b/zig/src/families/glm/cuda_engine.zig
+index 4d1b03a17..86fe0c958 100644
+--- a/zig/src/families/glm/cuda_engine.zig
++++ b/zig/src/families/glm/cuda_engine.zig
+@@ -24,6 +24,7 @@ const kv_shard = @import("cuda_kv_shard.zig");
+ const kv_attn = @import("cuda_kv_shard_attn.zig");
+ const kv_keep = @import("cuda_kv_shard_keep.zig");
+ const graphs_mod = @import("cuda_graphs.zig");
++const shared_table_mod = @import("cuda_shared_table.zig");
+ const tp = @import("tp");
+ const mesh_mod = @import("mesh");
+ pub const Options = @import("cuda_engine_types.zig").Options;
+@@ -75,6 +76,7 @@ pub const Engine = struct {
+     profs: [fw.window_rows]?*prof_mod.Prof = @splat(null), // TF_GLM_PROF=1: verify sections' GPU time, by rows
+     profiling_prompt: ?*prof_mod.Prof = null,
+     prompt_profs: [4]?*prof_mod.Prof = @splat(null), // and prompt chunks': to 64, 256, 1024, 2048 rows
++    shared_profs: [shared_rows]?*prof_mod.Prof = @splat(null), // and shared verify windows' (Mia 0099), by total rows
+     checkpoint_digest: [32]u8,
+     settings: ranks.Settings,
+     m: fw.Modules,
+@@ -86,6 +88,7 @@ pub const Engine = struct {
+     bd: fw.Buffers, // verify windows
+     bm: fw.Buffers, // the MTP head's rows
+     bs: ?fw.Buffers = null, // shared verify windows (with the MTP head, as the lane core shares only then)
++    shared_table: ?shared_table_mod.Table = null, // device-resident segment descriptor table for shared verify graphs
+     pairs: cuda.DeviceBuffer, // every rank's (value, id) of a greedy draw
+     smp: sampler.Sampler,
+     seqs: std.ArrayList(?*Seq) = .empty, // every stream's sequence by slot (the lane backend's), slot 0 made at init
+@@ -224,12 +227,14 @@ pub const Engine = struct {
+         errdefer e.bm.deinit();
+         if (o.mtp) e.bs = try fw.Buffers.initShared(d, &e.w, shared_rows, o.capacity);
+         errdefer if (e.bs) |*b| b.deinit();
++        if (e.bs != null) e.shared_table = try shared_table_mod.Table.init(d, &e.w);
++        errdefer if (e.shared_table) |*t| t.deinit();
+         if (o.settings.kv_shard.on) try e.initKvShard(); // before the room is read: its bytes are the rank's own
+         errdefer e.freeKvShard();
+         e.pairs = try cuda.DeviceBuffer.alloc(d, pair_bytes * world * pick_rows);
+         errdefer e.pairs.free();
+         try d.check(d.api.cuMemsetD8_v2(e.pairs.ptr, 0, pair_bytes * world * pick_rows), "cuMemsetD8"); // each pair's padding stays zero
+-        e.smp = try sampler.Sampler.init(d, c.vocab, fw.window_rows);
++        e.smp = try sampler.Sampler.init(d, c.vocab, if (o.mtp) shared_rows else fw.window_rows);
+         errdefer e.smp.deinit();
+         errdefer e.freeProfs();
+         const profiled = try prof_mod.Prof.wanted();
+@@ -240,6 +245,9 @@ pub const Engine = struct {
+             p.* = try prof_mod.Prof.init(d, io);
+             p.*.?.every = 4;
+         };
++        if (profiled) for (&e.shared_profs) |*p| {
++            p.* = try prof_mod.Prof.init(d, io);
++        };
+         e.prompt_out = try prompt_lp.Output.init(d);
+         errdefer e.prompt_out.free();
+         e.shared_buf = try cuda.DeviceBuffer.alloc(d, 8);
+@@ -271,6 +279,7 @@ pub const Engine = struct {
+         e.prompt_out.free();
+         e.smp.deinit();
+         e.pairs.free();
++        if (e.shared_table) |*t| t.deinit();
+         if (e.bs) |*b| b.deinit();
+         e.bm.deinit();
+         e.bd.deinit();
+@@ -532,6 +541,7 @@ pub const Engine = struct {
+     }
+ 
+     const verifyLabel = @import("cuda_engine_prof.zig").verifyLabel;
++    const sharedLabel = @import("cuda_engine_prof.zig").sharedLabel;
+ 
+     /// Several streams' windows in one forward: shared row ops, per-part attention and KDA.
+     pub fn verifyShared(e: *Engine, parts: []const Part) !void {
+@@ -550,14 +560,48 @@ pub const Engine = struct {
+             rows += p.ids.len;
+         }
+         var one: [1]fw.Rank = .{.{ .w = &e.w, .st = segs[0].st, .b = b, .segs = segs[0..parts.len] }};
+-        const f: fw.Forward = .{ .d = e.d, .m = &e.m, .stream = e.stream, .ranks = &one, .exchange = e.exchange(), .pieces = null, .split = e.settings.split, .ring = e.settings.ring, .kda_wide = e.settings.kda_wide, .taps = if (e.drafter) |dr| dr.taps(false) else null, .l2pf = if (e.l2pf) |*p| p else null, .kv = e.kvCtx(), .absorb_mma = e.settings.numerics.absorb_mma };
++        var f: fw.Forward = .{ .d = e.d, .m = &e.m, .stream = e.stream, .ranks = &one, .exchange = e.exchange(), .pieces = null, .split = e.settings.split, .ring = e.settings.ring, .kda_wide = e.settings.kda_wide, .taps = if (e.drafter) |dr| dr.taps(false) else null, .l2pf = if (e.l2pf) |*p| p else null, .kv = e.kvCtx(), .absorb_mma = e.settings.numerics.absorb_mma, .shared_table = if (e.shared_table) |*t| t else null };
++        f.prof = e.shared_profs[rows - 1];
++        if (f.prof) |p| try p.begin(e.stream, sharedLabel(rows));
+         if (e.graphs) |g| try g.sharedWindow(&f, @ptrCast(ids[0..rows])) else try f.run(@ptrCast(ids[0..rows]));
+         if (e.drafter) |dr| for (parts, segs[0..parts.len], 0..) |p, g, i| try dr.noteVerify(p.slot, g.row0, g.rows, g.st.pos, i == 0);
+-        for (parts, segs[0..parts.len]) |p, g| {
+-            try e.bind(p.slot);
+-            e.cur.rows_at = b.fnormed + g.row0 * e.c.hidden * 2;
+-            try e.draw(b.logits + g.row0 * e.share.vocab.len() * 2, g.rows, g.st.pos + 1, p.bits, p.out);
++        // Batch all streams' draws into ONE collective + ONE sync when unstructured and homogeneous (all greedy or all sampled).
++        var all_greedy = !e.structured;
++        var all_sampled = !e.structured and rows <= e.smp.rows;
++        for (parts) |p| {
++            const seq = e.seqs.items[p.slot] orelse return error.UnknownSlot;
++            if (seq.sampling != null) all_greedy = false else all_sampled = false;
+         }
++        if (all_greedy) {
++            var all_out: [shared_rows]u32 = undefined;
++            try @import("cuda_engine_pick.zig").greedyRows(e, b.logits, rows, all_out[0..rows]);
++            for (parts, segs[0..parts.len]) |p, g| {
++                try e.bind(p.slot);
++                e.cur.rows_at = b.fnormed + g.row0 * e.c.hidden * 2;
++                @memcpy(p.out, all_out[g.row0..][0..g.rows]);
++            }
++        } else if (all_sampled) {
++            var pdraws: [max_shared]sampler.Sampler.PartDraw = undefined;
++            var all_out: [shared_rows]u32 = undefined;
++            for (parts, segs[0..parts.len], 0..) |p, g, i| {
++                const seq = e.seqs.items[p.slot] orelse return error.UnknownSlot;
++                pdraws[i] = .{ .row0 = g.row0, .rows = g.rows, .first = g.st.pos + 1, .rule = sampler.rule(seq.sampling.?) };
++            }
++            try e.smp.drawShared(e.stream, e.exchange(), e.spans, &.{.{ .rank = e.share.rank, .logits = b.logits }}, rows, pdraws[0..parts.len], all_out[0..rows]);
++            try e.checkGathers();
++            for (parts, segs[0..parts.len]) |p, g| {
++                try e.bind(p.slot);
++                e.cur.rows_at = b.fnormed + g.row0 * e.c.hidden * 2;
++                @memcpy(p.out, all_out[g.row0..][0..g.rows]);
++            }
++        } else {
++            for (parts, segs[0..parts.len]) |p, g| {
++                try e.bind(p.slot);
++                e.cur.rows_at = b.fnormed + g.row0 * e.c.hidden * 2;
++                try e.draw(b.logits + g.row0 * e.share.vocab.len() * 2, g.rows, g.st.pos + 1, p.bits, p.out);
++            }
++        }
++        if (f.prof) |p| p.end();
+     }
+ 
+     /// DFlash2's round (every rank, the same `reqs`): each stream's kept rows into its context, then the block pass.
+diff --git a/zig/src/families/glm/cuda_engine_pick.zig b/zig/src/families/glm/cuda_engine_pick.zig
+index 9936bd4b5..794822139 100644
+--- a/zig/src/families/glm/cuda_engine_pick.zig
++++ b/zig/src/families/glm/cuda_engine_pick.zig
+@@ -21,14 +21,13 @@ pub fn greedyRows(e: *Engine, logits: u64, rows: usize, out: []u32) !void {
+     const world = e.share.world;
+     const bytes = rows * pair_bytes;
+     const mine = e.pairs.ptr + e.share.rank * bytes;
+-    for (0..rows) |r| {
+-        var a: cuda.Args = .{};
+-        a.add(logits + r * e.share.vocab.len() * 2);
+-        a.add(@as(i64, @intCast(e.share.vocab.len())));
+-        a.add(@as(u32, @intCast(e.share.vocab.lo)));
+-        a.add(mine + r * pair_bytes);
+-        try cuda_pdl.launch(e.m.glue.top1, .{ .grid = .{ .x = 1 }, .block = .{ .x = 1024 } }, e.stream, &a);
+-    }
++    var a: cuda.Args = .{};
++    a.add(logits);
++    a.add(@as(i64, @intCast(e.share.vocab.len())));
++    a.add(@as(i64, @intCast(e.share.vocab.len())));
++    a.add(@as(u32, @intCast(e.share.vocab.lo)));
++    a.add(mine);
++    try cuda_pdl.launch(e.m.glue.top1_rows, .{ .grid = .{ .x = @intCast(rows) }, .block = .{ .x = 1024 } }, e.stream, &a);
+     if (e.group) |g| try g.allGather(e.stream, mine, e.pairs.ptr, bytes) else try e.lib.check(e.lib.api.ncclAllGather(mine, e.pairs.ptr, bytes, .u8, e.comm, e.stream.handle), "ncclAllGather");
+     try e.stream.synchronize();
+     try e.checkGathers();
+diff --git a/zig/src/families/glm/cuda_engine_prof.zig b/zig/src/families/glm/cuda_engine_prof.zig
+index 8b3bbe479..4699ec750 100644
+--- a/zig/src/families/glm/cuda_engine_prof.zig
++++ b/zig/src/families/glm/cuda_engine_prof.zig
+@@ -10,6 +10,10 @@ pub fn freeProfs(e: *Engine) void {
+         if (p.*) |v| v.deinit();
+         p.* = null;
+     }
++    for (&e.shared_profs) |*p| {
++        if (p.*) |v| v.deinit();
++        p.* = null;
++    }
+ }
+ 
+ pub fn heatRoot() []const u8 {
+@@ -21,3 +25,17 @@ pub fn verifyLabel(rows: usize) []const u8 {
+     const l = [_][]const u8{ "verify 1 row", "verify 2 rows", "verify 3 rows", "verify 4 rows", "verify 5 rows", "verify 6 rows", "verify 7 rows", "verify 8 rows" };
+     return l[@min(rows, l.len) - 1];
+ }
++
++pub fn sharedLabel(rows: usize) []const u8 {
++    const l = [_][]const u8{
++        "shared 1 row",   "shared 2 rows",  "shared 3 rows",  "shared 4 rows",
++        "shared 5 rows",  "shared 6 rows",  "shared 7 rows",  "shared 8 rows",
++        "shared 9 rows",  "shared 10 rows", "shared 11 rows", "shared 12 rows",
++        "shared 13 rows", "shared 14 rows", "shared 15 rows", "shared 16 rows",
++        "shared 17 rows", "shared 18 rows", "shared 19 rows", "shared 20 rows",
++        "shared 21 rows", "shared 22 rows", "shared 23 rows", "shared 24 rows",
++        "shared 25 rows", "shared 26 rows", "shared 27 rows", "shared 28 rows",
++        "shared 29 rows", "shared 30 rows", "shared 31 rows", "shared 32 rows",
++    };
++    return l[@min(rows, l.len) - 1];
++}
+diff --git a/zig/src/families/glm/cuda_forward.zig b/zig/src/families/glm/cuda_forward.zig
+index e8ff50d8f..fac76358b 100644
+--- a/zig/src/families/glm/cuda_forward.zig
++++ b/zig/src/families/glm/cuda_forward.zig
+@@ -28,6 +28,7 @@ const index_mod = @import("cuda_index.zig");
+ const l2pf_mod = @import("cuda_l2pf.zig");
+ const pieces_mod = @import("cuda_forward_pieces.zig");
+ const kv_attn = @import("cuda_kv_shard_attn.zig");
++const shared_table_mod = @import("cuda_shared_table.zig");
+ 
+ pub const prefill_rows = state.prefill_rows;
+ pub const solo_rows = state.solo_rows;
+@@ -187,6 +188,7 @@ pub const Forward = struct {
+     l2pf: ?*const l2pf_mod.L2pf = null, // TF_GLM_L2PF: a decode window's sites read their next weights into L2
+     kv: ?*const kv_attn.Ctx = null, // TF_GLM_KV_SHARD: owner-computed attention's exchange room (null: unsharded)
+     absorb_mma: bool = false, // TF_GLM_ABSORB_MMA=1: a prompt pass's absorb_q and expand_v on tensor cores
++    shared_table: ?*shared_table_mod.Table = null, // device-resident segment descriptor table for shared verify graphs
+ 
+     /// TF_GLM_L2PF on this forward: a decode window of this process's one rank (a prompt chunk reads at full rate).
+     pub fn prefetch(f: *const Forward) ?*const l2pf_mod.L2pf {
+@@ -397,7 +399,7 @@ pub const Forward = struct {
+         return f.runMode(ids, true);
+     }
+ 
+-    /// Host-side prep for a graphed lone or shared verify window: validates, calls ready/shared.begin (may rebase), uploads ids.
++    /// Host-side prep for a graphed lone or shared verify window: validates, calls ready/shared.begin (may rebase), uploads ids and shared segment table.
+     pub fn runReady(f: *const Forward, ids: []const i32) !void {
+         const R = ids.len;
+         for (f.ranks) |r| {
+@@ -406,7 +408,10 @@ pub const Forward = struct {
+                 try r.st.ready(f.stream, R);
+                 r.st.pending = R;
+                 r.st.prompt = r.b.prefill;
+-            } else try shared.begin(r, R, f.stream);
++            } else {
++                try shared.begin(r, R, f.stream);
++                if (f.shared_table) |stbl| try stbl.fill(f, r);
++            }
+             try cuda.copy_source.enqueue(f.d, r.b.ids, std.mem.sliceAsBytes(ids), f.stream);
+         }
+     }
+@@ -428,7 +433,10 @@ pub const Forward = struct {
+                 try r.st.ready(f.stream, R);
+                 r.st.pending = R;
+                 r.st.prompt = r.b.prefill;
+-            } else try shared.begin(r, R, f.stream);
++            } else {
++                try shared.begin(r, R, f.stream);
++                if (f.shared_table) |stbl| try stbl.fill(f, r);
++            }
+             try cuda.copy_source.enqueue(f.d, r.b.ids, std.mem.sliceAsBytes(ids), f.stream);
+         }
+         const c = &f.ranks[0].w.config;
+diff --git a/zig/src/families/glm/cuda_glue.zig b/zig/src/families/glm/cuda_glue.zig
+index 702e76453..d28e697e8 100644
+--- a/zig/src/families/glm/cuda_glue.zig
++++ b/zig/src/families/glm/cuda_glue.zig
+@@ -46,6 +46,7 @@ pub const Kernels = struct {
+     slice_sum: cuda.Function,
+     top1: cuda.Function,
+     top1_sums: cuda.Function,
++    top1_rows: cuda.Function,
+     put_words: cuda.Function,
+     embed_b16: cuda.Function,
+     conv_shift: cuda.Function,
+@@ -99,10 +100,16 @@ pub const Kernels = struct {
+     merge: cuda.Function,
+     chunks_16_fp8_paged_segs: cuda.Function, // a shared / sharded window's segments in one launch (latent.attentionSegs)
+     merge_segs: cuda.Function,
++    chunks_16_fp8_paged_segs_ptr: cuda.Function, // device-table variants for zero-thrash shared verify CUDA graphs
++    merge_segs_ptr: cuda.Function,
+     lat_write_fp8_paged_segs: cuda.Function, // and its cache writes (dsa_block.writeSegs)
+     index_write_segs: cuda.Function,
+     pool_keys_segs: cuda.Function,
++    lat_write_fp8_paged_segs_ptr: cuda.Function,
++    index_write_segs_ptr: cuda.Function,
++    pool_keys_segs_ptr: cuda.Function,
+     copy_segs: cuda.Function, // several 16-byte-aligned copies a launch (a shared window's KDA projection rows)
++    copy_segs_ptr: cuda.Function,
+     scores: cuda.Function,
+     latent_mma_kn: cuda.Function, // TF_GLM_ABSORB_MMA (glm_glue_num.cuh): absorb_q's head-batched GEMM, B as [K][N]
+     latent_mma_nk: cuda.Function, // and expand_v's, B as [N][K]
+@@ -118,6 +125,7 @@ pub const Kernels = struct {
+         try k.chunks_32_fp8.allowDynamicShared(chunksSmem(32));
+         try k.chunks_16_fp8_paged.allowDynamicShared(chunksSmem(16));
+         try k.chunks_16_fp8_paged_segs.allowDynamicShared(chunksSmem(16));
++        try k.chunks_16_fp8_paged_segs_ptr.allowDynamicShared(chunksSmem(16));
+         try k.chunks_32_fp8_paged.allowDynamicShared(chunksSmem(32));
+         try k.chunks_16_fused.allowDynamicShared(chunksSmem(16));
+         try k.chunks_32_fused.allowDynamicShared(chunksSmem(32));
+@@ -437,6 +445,16 @@ pub fn copySegs(set: Set, stream: cuda.Stream, t: *const Copies, n: usize) !void
+     try cuda_pdl.launch(set.glue.copy_segs, .{ .grid = .{ .x = blocks, .y = @intCast(n) }, .block = .{ .x = 256 } }, stream, &a);
+ }
+ 
++/// Device-table variant of copySegs for zero-thrash shared verify CUDA graphs (`most_n` is max 16-byte unit count).
++pub fn copySegsPtr(set: Set, stream: cuda.Stream, copies_dev: u64, n: usize, most_n: i64) !void {
++    if (n == 0 or n > max_copies) return error.TooManySegments;
++    const m: i64 = @max(1, most_n);
++    const blocks: u32 = @intCast(@min(@as(i64, 128), @divFloor(m + 255, 256)));
++    var a: cuda.Args = .{};
++    a.add(copies_dev);
++    try cuda_pdl.launch(set.glue.copy_segs_ptr, .{ .grid = .{ .x = blocks, .y = @intCast(n) }, .block = .{ .x = 256 } }, stream, &a);
++}
++
+ test "copySegs' table is glm_glue_index.cuh's tf_glm_copies" {
+     try std.testing.expectEqual(@as(usize, 24), @sizeOf(Copy));
+     try std.testing.expectEqual(@as(usize, 16 * 24), @sizeOf(Copies));
+diff --git a/zig/src/families/glm/cuda_graphs.zig b/zig/src/families/glm/cuda_graphs.zig
+index 49fdae57d..cce505d8d 100644
+--- a/zig/src/families/glm/cuda_graphs.zig
++++ b/zig/src/families/glm/cuda_graphs.zig
+@@ -19,6 +19,7 @@ const fw = @import("cuda_forward.zig");
+ const weights = @import("cuda_weights.zig");
+ const taps_mod = @import("cuda_taps.zig");
+ const kv_attn = @import("cuda_kv_shard_attn.zig");
++const shared_table_mod = @import("cuda_shared_table.zig");
+ 
+ pub const Mode = enum(u8) { off = 0, on = 1, check = 2 };
+ 
+@@ -36,7 +37,7 @@ pub const tap_rows = 8;
+ /// Shared verify windows graphed: up to 32 rows, up to 16 segments (Engine.shared_rows / Engine.max_shared).
+ pub const shared_verify_rows: usize = 32;
+ pub const shared_verify_segs: usize = 16;
+-pub const default_shared_cap: u32 = 32;
++pub const default_shared_cap: u32 = 64;
+ /// TF_GLM_DRAFT_GRAPHS: drafter block passes for 1-8 streams (covers C1/C4/C8), ingests for 1-64 rows.
+ pub const block_streams: usize = 8;
+ pub const ingest_rows: usize = 64;
+@@ -182,6 +183,55 @@ pub fn sharedVerifyKey(segs: []const fw.Seg, l: ?dsa_block.Layer, nch_cap: usize
+     };
+ }
+ 
++/// Zero-thrash shared verify key when `stbl` (device descriptor table) is valid:
++/// - Dense windows omit all per-segment KDA parities (`cur`), state/cache pointers, and `(row0, rows)` permutations!
++/// - Sparse windows still omit all KDA parities and `.give` segments, hashing only owned segments' `attendSelect` host params.
++pub fn sharedVerifyKeyTable(stbl: ?*const shared_table_mod.Table, segs: []const fw.Seg, l: ?dsa_block.Layer, nch_cap: usize, rank: usize, sharded: bool, taps: u64) SharedVerifyKey {
++    const t = stbl orelse return sharedVerifyKey(segs, l, nch_cap, rank, sharded, taps);
++    if (!t.valid) return sharedVerifyKey(segs, l, nch_cap, rank, sharded, taps);
++    var total_rows: usize = 0;
++    for (segs) |g| total_rows += g.rows;
++    const st_lo: u64 = 1 |
++        (@as(u64, t.max_seg_bucket) << 8) |
++        (@as(u64, t.give_rows) << 16) |
++        (@as(u64, t.take_rows) << 24) |
++        (@as(u64, t.attn_rows) << 32) |
++        (@as(u64, t.max_nch) << 40) |
++        (@as(u64, @intFromEnum(t.kind)) << 48) |
++        (@as(u64, t.pool_blocks) << 50);
++    const st_hi: u64 = mix64(mix64(t.lat_ps0, t.pk_ps0), t.dev.ptr);
++    var sh_lo: u64 = 0;
++    var sh_hi: u64 = 0;
++    if (t.kind == .sparse) {
++        sh_lo = 0x517cc1b727220a95;
++        sh_hi = 0x27220a95517cc1b7;
++        for (segs) |g| {
++            const role: kv_attn.Role = if (sharded) kv_attn.role(g.st.hold, rank) else .local;
++            if (role == .give) continue;
++            mix128(&sh_lo, &sh_hi, (@as(u64, @intCast(g.row0)) << 16) | @as(u64, @intCast(g.rows)));
++            mix128(&sh_lo, &sh_hi, g.st.pos_dev);
++            for (g.st.caches) |c| {
++                const w = [_]u64{ c.pk, c.pk_rows, c.pt, c.ps };
++                mix128(&sh_lo, &sh_hi, gc.fingerprintOf(&w));
++            }
++            if (l) |a| if (g.st.caches.len > 0) {
++                const s = shapeAt(a, g.st.caches[0].pk_rows, nch_cap, g.st.pos, g.rows);
++                mix128(&sh_lo, &sh_hi, (@as(u64, s.np) << 32) | s.nb);
++                mix128(&sh_lo, &sh_hi, s.dsel);
++            };
++        }
++    }
++    return .{
++        .rows = @intCast(total_rows),
++        .segs = t.segs,
++        .state_lo = st_lo,
++        .state_hi = st_hi,
++        .shapes_lo = sh_lo,
++        .shapes_hi = sh_hi,
++        .taps = taps,
++    };
++}
++
+ /// Why a draft step runs eagerly under TF_GLM_GRAPHS (null: it is graphed).
+ pub fn draftEagerBecause(f: *const fw.Forward, ids_len: usize) !?[]const u8 {
+     if (f.ranks.len != 1) return "local ranks";
+@@ -515,7 +565,7 @@ pub const Graphs = struct {
+         const R = ids.len;
+         try f.runReady(ids);
+         const taps_ptr: u64 = if (f.taps) |t| t.out else 0;
+-        const key = sharedVerifyKey(r.segs, firstMla(r.w.layers), r.b.nch, if (f.kv) |kv| kv.rank else g.rank, f.kv != null, taps_ptr);
++        const key = sharedVerifyKeyTable(f.shared_table, r.segs, firstMla(r.w.layers), r.b.nch, if (f.kv) |kv| kv.rank else g.rank, f.kv != null, taps_ptr);
+         var s: VerifyBody = .{ .f = f, .rows = R };
+         const body: gc.Body = .{ .ctx = &s, .run = VerifyBody.run };
+         const c = g.check orelse return g.note(try sv.run(key, f.stream, g.shared_verify_print, body), sv.stats.capture_mib);
+@@ -643,4 +693,29 @@ test "glm graphs: sharded role, latent page table, and shared segment changes pr
+     st0.hold = .{ .owner = 0, .twin = false };
+     st1.pos = 9000;
+     try std.testing.expect(!std.meta.eql(sk0, sharedVerifyKey(&segs, l, 9, 0, true, 0xabc)));
++    // Zero-thrash table key: dense window is invariant to KDA cur parity flip and per-seg row splits with same totals.
++    var tbl: shared_table_mod.Table = undefined;
++    tbl.valid = true;
++    tbl.dev.ptr = 0xdead0000;
++    tbl.segs = 2;
++    tbl.max_seg_bucket = 4;
++    tbl.give_rows = 3;
++    tbl.take_rows = 3;
++    tbl.attn_rows = 6;
++    tbl.max_nch = 1;
++    tbl.pool_blocks = 6;
++    tbl.kind = .dense;
++    tbl.lat_ps0 = 512 * 516;
++    tbl.pk_ps0 = 1024 * 512;
++    st0.pos = 100;
++    st1.pos = 120;
++    const segs_a = [_]fw.Seg{ .{ .st = &st0, .row0 = 0, .rows = 3 }, .{ .st = &st1, .row0 = 3, .rows = 3 } };
++    const tk0 = sharedVerifyKeyTable(&tbl, &segs_a, l, 9, 0, true, 0xabc);
++    cur0[0] = 1;
++    cur1[0] = 1;
++    const segs_b = [_]fw.Seg{ .{ .st = &st1, .row0 = 0, .rows = 2 }, .{ .st = &st0, .row0 = 2, .rows = 4 } };
++    try std.testing.expect(std.meta.eql(tk0, sharedVerifyKeyTable(&tbl, &segs_b, l, 9, 0, true, 0xabc)));
++    tbl.give_rows = 4;
++    tbl.take_rows = 2;
++    try std.testing.expect(!std.meta.eql(tk0, sharedVerifyKeyTable(&tbl, &segs_b, l, 9, 0, true, 0xabc)));
+ }
+diff --git a/zig/src/families/glm/cuda_kda_block.zig b/zig/src/families/glm/cuda_kda_block.zig
+index b96adc15c..b91c76044 100644
+--- a/zig/src/families/glm/cuda_kda_block.zig
++++ b/zig/src/families/glm/cuda_kda_block.zig
+@@ -144,6 +144,13 @@ pub fn chainSegs(ks: *const kda.Kernels, stream: cuda.Stream, l: Layer, t: *cons
+     try kda.chainSegs(ks, stream, c, t, n);
+ }
+ 
++/// Device-table variant of chainSegs for zero-thrash shared verify CUDA graphs.
++pub fn chainSegsPtr(ks: *const kda.Kernels, stream: cuda.Stream, l: Layer, segs_dev: u64, n: usize, most: usize) !void {
++    const fa = 3 * l.heads * kda.dk;
++    const c: kda.Chain = .{ .p = 0, .p_stride = l.matWidth(), .b_off = fa + 2 * kda.dk, .a = 0, .a_stride = l.heads * kda.dk, .g = 0, .g_stride = l.heads * kda.dk, .conv_state = 0, .conv_w = l.conv_w, .state_in = 0, .a_log = l.a_log, .dt_bias = l.dt_bias, .norm_w = l.norm_w, .eps = l.eps, .lower = l.lower, .heads = l.heads };
++    try kda.chainSegsPtr(ks, stream, c, segs_dev, n, most);
++}
++
+ test {
+     _ = @import("cuda_kda_tp3_test.zig");
+ }
+diff --git a/zig/src/families/glm/cuda_kv_shard_attn.zig b/zig/src/families/glm/cuda_kv_shard_attn.zig
+index 45f04f88d..d5698377b 100644
+--- a/zig/src/families/glm/cuda_kv_shard_attn.zig
++++ b/zig/src/families/glm/cuda_kv_shard_attn.zig
+@@ -14,6 +14,8 @@ const latent = @import("cuda_latent.zig");
+ const sparse = @import("cuda_sparse.zig");
+ const weights = @import("cuda_weights.zig");
+ const prof = @import("cuda_prof.zig");
++const glue = @import("cuda_glue.zig");
++const shared_table_mod = @import("cuda_shared_table.zig");
+ 
+ /// A segment's part on this rank: both ranks hold its rows (`local`), this rank lacks them (`give`: its queries out,
+ /// its outputs in), or this rank alone holds them (`take`: the peer's queries in, its outputs out).
+@@ -262,6 +264,50 @@ pub fn single(f: *const fw.Forward, r: fw.Rank, a: dsa_block.Layer, di: usize, r
+ pub fn shared(f: *const fw.Forward, r: fw.Rank, a: dsa_block.Layer, di: usize, rows: usize) !void {
+     const kv = f.kv.?;
+     const b = r.b;
++    if (f.shared_table) |stbl| if (stbl.valid) {
++        const kk: dsa_block.Kernels = .{ .set = f.set(), .ops = f.m.ops() };
++        try dsa_block.prepare(f.set(), f.stream, a, b.dsa, b.normed, r.w.config.hidden, rows, stbl.kind == .sparse);
++        const give_rows: usize = stbl.give_rows;
++        const take_rows: usize = stbl.take_rows;
++        const rb = stbl.rb;
++        const xchg = give_rows > 0 or take_rows > 0;
++        const lib = kv.lib;
++        const peer: c_int = @intCast(kv.peer());
++        const copy_most: i64 = @intCast(@as(usize, stbl.max_seg_bucket) * rb / 16);
++        if (give_rows > 0) try glue.copySegsPtr(f.set(), f.stream, stbl.packQaDev(), stbl.segs, copy_most);
++        if (xchg) {
++            try lib.check(lib.api.ncclGroupStart(), "ncclGroupStart");
++            if (give_rows > 0) {
++                try lib.check(lib.api.ncclSend(shared_table_mod.Table.giveQaBuf(kv, rb), give_rows * rb, .u8, peer, kv.comm, f.stream.handle), "ncclSend");
++                if (kv.counts) |c| c.owner_bytes += give_rows * rb;
++            }
++            if (take_rows > 0) try lib.check(lib.api.ncclRecv(kv.pq, take_rows * rb, .u8, peer, kv.comm, f.stream.handle), "ncclRecv");
++            try lib.check(lib.api.ncclGroupEnd(), "ncclGroupEnd");
++        }
++        try dsa_block.writeSegsPtr(kk, f.stream, a, stbl.writesDev(di), rows, stbl.pool_blocks, stbl.lat_ps0, stbl.pk_ps0);
++        if (stbl.kind == .sparse) for (r.segs) |g| {
++            if (role(g.st.hold, kv.rank) == .give) continue;
++            const v = dsa_block.attendScratch(a, b.dsa, g.row0);
++            try dsa_block.attendSelect(kk, f.stream, a, g.st.caches[di], v, g.rows, g.st.pos_dev, g.st.pos, b.dsa.tokens + g.row0 * sparse.width * 4, b.dsa.counts + g.row0 * 4);
++        };
++        if (stbl.attn_rows > 0) try dsa_block.attendSegsPtr(kk, f.stream, a, stbl.attnsDev(di), stbl.attn_rows, stbl.max_nch, stbl.lat_ps0, stbl.kind);
++        if (xchg) {
++            try lib.check(lib.api.ncclGroupStart(), "ncclGroupStart");
++            if (take_rows > 0) {
++                try lib.check(lib.api.ncclSend(kv.po, take_rows * rb, .u8, peer, kv.comm, f.stream.handle), "ncclSend");
++                if (kv.counts) |c| c.owner_bytes += take_rows * rb;
++            }
++            if (give_rows > 0) try lib.check(lib.api.ncclRecv(shared_table_mod.Table.giveOlBuf(kv, rb), give_rows * rb, .u8, peer, kv.comm, f.stream.handle), "ncclRecv");
++            try lib.check(lib.api.ncclGroupEnd(), "ncclGroupEnd");
++        }
++        if (give_rows > 0) try glue.copySegsPtr(f.set(), f.stream, stbl.unpackOlDev(), stbl.segs, copy_most);
++        if (xchg) if (kv.counts) |c| {
++            c.owner_layers += 1;
++            c.owner_rows += give_rows + take_rows;
++        };
++        try latent.expandV(f.set(), f.stream, b.dsa.ol, a.wv, b.dsa.vn, rows, a.heads, a.dv, a.lw);
++        return;
++    };
+     var sparse_any = false;
+     for (r.segs) |g| sparse_any = sparse_any or dsa_block.sparseRows(a, g.st.pos, g.rows);
+     try dsa_block.prepare(f.set(), f.stream, a, b.dsa, b.normed, r.w.config.hidden, rows, sparse_any);
+diff --git a/zig/src/families/glm/cuda_latent.zig b/zig/src/families/glm/cuda_latent.zig
+index 11b4ecb14..01a29e058 100644
+--- a/zig/src/families/glm/cuda_latent.zig
++++ b/zig/src/families/glm/cuda_latent.zig
+@@ -211,6 +211,25 @@ pub fn attentionSegs(set: glue.Set, stream: cuda.Stream, t: *const AttnSegs, row
+     try cuda_pdl.launch(set.glue.merge_segs, .{ .grid = .{ .x = @intCast(rows), .y = @intCast(heads) }, .block = .{ .x = 128 } }, stream, &m);
+ }
+ 
++/// Device-table variant of attentionSegs for zero-thrash shared verify CUDA graphs.
++pub fn attentionSegsPtr(set: glue.Set, stream: cuda.Stream, segs_dev: u64, rows: usize, most_nch: usize, heads: usize, lw: usize, w: usize, scale: f32, pstep: u64, sparse: bool) !void {
++    if (lw != 512) return error.LatentShape;
++    if (rows == 0 or most_nch == 0) return;
++    var a: cuda.Args = .{};
++    a.add(@as(i64, @intCast(heads)));
++    a.add(@as(i64, @intCast(w)));
++    a.add(scale);
++    a.add(@as(c_int, @intFromBool(sparse)));
++    a.add(@as(i64, @intCast(pstep)));
++    a.add(segs_dev);
++    try cuda_pdl.launch(set.glue.chunks_16_fp8_paged_segs_ptr, .{ .grid = .{ .x = @intCast(rows), .y = cdiv(heads, heads_tile), .z = @intCast(most_nch) }, .block = .{ .x = 256 }, .shared = glue.chunksSmem(heads_tile) }, stream, &a);
++    var m: cuda.Args = .{};
++    m.add(@as(i64, @intCast(heads)));
++    m.add(@as(c_int, @intFromBool(sparse)));
++    m.add(segs_dev);
++    try cuda_pdl.launch(set.glue.merge_segs_ptr, .{ .grid = .{ .x = @intCast(rows), .y = @intCast(heads) }, .block = .{ .x = 128 } }, stream, &m);
++}
++
+ test "a shared window's attention segments fit glm_glue_attn.cuh's table and one launch's arguments" {
+     try std.testing.expectEqual(@as(usize, 104), @sizeOf(AttnSeg));
+     try std.testing.expectEqual(@as(usize, 16 * 104 + 8), @sizeOf(AttnSegs));
+diff --git a/zig/src/families/glm/cuda_sampler.zig b/zig/src/families/glm/cuda_sampler.zig
+index 3e34a2e0b..48261dde5 100644
+--- a/zig/src/families/glm/cuda_sampler.zig
++++ b/zig/src/families/glm/cuda_sampler.zig
+@@ -54,9 +54,10 @@ pub const Sampler = struct {
+         errdefer full.free();
+         var stage = try cuda.DeviceBuffer.alloc(d, stagingBytes(vocab, rows));
+         errdefer stage.free();
+-        var r = try cuda.DeviceBuffer.alloc(d, @sizeOf(Rule));
++        const max_parts = 16;
++        var r = try cuda.DeviceBuffer.alloc(d, max_parts * @sizeOf(Rule));
+         errdefer r.free();
+-        var meta = try cuda.DeviceBuffer.alloc(d, 16);
++        var meta = try cuda.DeviceBuffer.alloc(d, max_parts * 16);
+         errdefer meta.free();
+         var tok = try cuda.DeviceBuffer.alloc(d, rows * 4);
+         errdefer tok.free();
+@@ -100,6 +101,37 @@ pub const Sampler = struct {
+         try s.tok.download(0, std.mem.sliceAsBytes(out[0..rows]));
+     }
+ 
++    pub const PartDraw = struct { row0: usize, rows: usize, first: u64, rule: Rule };
++
++    /// Several sampled streams in one gather, one sync, and one token download (bit-identical to per-part draw).
++    pub fn drawShared(s: *Sampler, stream: cuda.Stream, exchange: Exchange, spans: []const Span, mine: []const Local, total_rows: usize, parts: []const PartDraw, out: []u32) !void {
++        std.debug.assert(total_rows <= s.rows and parts.len <= 16 and out.len >= total_rows);
++        try s.gather(stream, exchange, spans, mine, total_rows, s.stage.ptr, s.full.ptr);
++        const V = s.vocab;
++        var rules: [16]Rule = undefined;
++        var metas: [16][4]i32 = undefined;
++        for (parts, 0..) |p, i| {
++            std.debug.assert(p.first >= 1);
++            rules[i] = p.rule;
++            metas[i] = .{ @intCast(p.first - 1), 0, 0, 0 };
++        }
++        try s.rule.uploadAsync(0, std.mem.sliceAsBytes(rules[0..parts.len]), stream.handle);
++        try s.meta.uploadAsync(0, std.mem.sliceAsBytes(metas[0..parts.len]), stream.handle);
++        for (parts, 0..) |p, i| {
++            var args: cuda.Args = .{};
++            args.add(s.full.ptr + p.row0 * V * 2);
++            args.add(@as(u32, @intCast(V)));
++            args.add(s.rule.ptr + i * @sizeOf(Rule));
++            args.add(s.meta.ptr + i * 16);
++            args.add(@as(i32, 0));
++            args.add(s.tok.ptr + p.row0 * 4);
++            args.add(s.prob.ptr + p.row0 * 4);
++            try cuda.launch.launch(s.tf_draw, .{ .grid = .{ .x = @intCast(p.rows) }, .block = .{ .x = 1024 } }, stream, &args);
++        }
++        try stream.synchronize();
++        try s.tok.download(0, std.mem.sliceAsBytes(out[0..total_rows]));
++    }
++
+     /// `full` (bf16 [rows][vocab]) whole on every rank: one broadcast a rank into `stage`, one strided copy a rank.
+     pub fn gather(s: *const Sampler, stream: cuda.Stream, exchange: Exchange, spans: []const Span, mine: []const Local, rows: usize, stage: u64, full: u64) !void {
+         switch (exchange) {
+diff --git a/zig/src/families/glm/cuda_shared.zig b/zig/src/families/glm/cuda_shared.zig
+index afe055af3..b1b1e576a 100644
+--- a/zig/src/families/glm/cuda_shared.zig
++++ b/zig/src/families/glm/cuda_shared.zig
+@@ -69,6 +69,13 @@ pub fn mixer(f: *const fw.Forward, r: fw.Rank, l: weights.Layer, li: usize, di:
+             s.p = b.kproj;
+             try kda_block.project(f.set(), f.stream, k, s, b.normed, c.hidden, rows);
+             if (f.prefetch()) |p| try p.fork(f.stream, l.index, .o); // TF_GLM_L2PF: o read into L2 while the chains run
++            if (f.shared_table) |stbl| if (stbl.valid) {
++                const most_n: i64 = @intCast(@as(usize, stbl.max_seg_bucket) * w * 2 / 16);
++                try glue.copySegsPtr(f.set(), f.stream, stbl.copiesDev(li), stbl.segs, most_n);
++                try kda_block.chainSegsPtr(&f.m.kda, f.stream, k, stbl.kdaDev(li), stbl.segs, stbl.max_seg_bucket);
++                if (out) |o| try kda_block.fill(f.set(), f.stream, k, s, 0, rows, o);
++                return;
++            };
+             // a decode window on the three-kernel chain: every segment's chain in one launch each (kda.chainSegs),
+             // plus one copy launch for projection rows into each stream when every copy is 16-byte aligned
+             const batched = !b.prefill and f.kda_wide and f.m.shared_segs and r.segs.len <= kda.max_segs;
+@@ -126,6 +133,19 @@ pub fn mixer(f: *const fw.Forward, r: fw.Rank, l: weights.Layer, li: usize, di:
+                 if (out) |o| try dsa_block.fill(f.set(), f.stream, a, b.dsa, 0, rows, o);
+                 return;
+             }
++            if (f.shared_table) |stbl| if (stbl.valid) {
++                const kk: dsa_block.Kernels = .{ .set = f.set(), .ops = f.m.ops() };
++                try dsa_block.prepare(f.set(), f.stream, a, b.dsa, b.normed, c.hidden, rows, stbl.kind == .sparse);
++                try dsa_block.writeSegsPtr(kk, f.stream, a, stbl.writesDev(di), rows, stbl.pool_blocks, stbl.lat_ps0, stbl.pk_ps0);
++                if (stbl.kind == .sparse) for (r.segs) |g| {
++                    const v = dsa_block.attendScratch(a, b.dsa, g.row0);
++                    try dsa_block.attendSelect(kk, f.stream, a, g.st.caches[di], v, g.rows, g.st.pos_dev, g.st.pos, b.dsa.tokens + g.row0 * sparse.width * 4, b.dsa.counts + g.row0 * 4);
++                };
++                try dsa_block.attendSegsPtr(kk, f.stream, a, stbl.attnsDev(di), stbl.attn_rows, stbl.max_nch, stbl.lat_ps0, stbl.kind);
++                try latent.expandV(f.set(), f.stream, b.dsa.ol, a.wv, b.dsa.vn, rows, a.heads, a.dv, a.lw);
++                if (out) |o| try dsa_block.fill(f.set(), f.stream, a, b.dsa, 0, rows, o);
++                return;
++            };
+             var sparse_any = false;
+             for (r.segs) |g| sparse_any = sparse_any or dsa_block.sparseRows(a, g.st.pos, g.rows);
+             try dsa_block.prepare(f.set(), f.stream, a, b.dsa, b.normed, c.hidden, rows, sparse_any);
+diff --git a/zig/src/families/glm/cuda_shared_table.zig b/zig/src/families/glm/cuda_shared_table.zig
+new file mode 100644
+index 000000000..e93a7f23c
+--- /dev/null
++++ b/zig/src/families/glm/cuda_shared_table.zig
+@@ -0,0 +1,387 @@
++//! Device-resident per-layer segment descriptor table for zero-thrash shared multi-stream verify CUDA graphs.
++//!
++//! Uploaded once per round in Forward.runReady (one ~116 KiB H2D async copy before graph replay), removing all
++//! per-stream KDA ping-pong parities (`st.cur`), state/cache pointers, and per-segment `(row0, rows)` permutations
++//! from CUDA graph kernel parameters so shared C4/C8 verify windows achieve >95% graph replay hit rate.
++const std = @import("std");
++const cuda = @import("cuda");
++const kda = cuda.kda;
++const fw = @import("cuda_forward.zig");
++const glue = @import("cuda_glue.zig");
++const latent = @import("cuda_latent.zig");
++const dsa_block = @import("cuda_dsa_block.zig");
++const sparse = @import("cuda_sparse.zig");
++const kv_attn = @import("cuda_kv_shard_attn.zig");
++const weights = @import("cuda_weights.zig");
++
++/// Row stride reserved inside kv_room (pq/po) for packed `.give` rows (gq/go) during decode shared windows.
++/// Engine.shared_rows = 32, so pq[0..32) holds received peer queries and pq[32..64) holds packed outgoing queries.
++pub const give_pack_row_off: usize = 32;
++
++fn align64(n: usize) usize {
++    return (n + 63) & ~@as(usize, 63);
++}
++
++/// Bucket max segment rows to {4, 8, 16, m} so small row-count fluctuations share the same CUDA graph grids.
++pub fn bucketRows(m: usize) usize {
++    if (m <= 4) return 4;
++    if (m <= 8) return 8;
++    if (m <= 16) return 16;
++    return m;
++}
++
++pub const Table = struct {
++    d: *const cuda.Driver,
++    dev: cuda.DeviceBuffer,
++    host: cuda.HostBuffer,
++    total_bytes: usize,
++    kda_layers: usize,
++    mla_layers: usize,
++    off_copies: usize,
++    off_kda: usize,
++    off_writes: usize,
++    off_attns: usize,
++    off_pack_qa: usize,
++    off_unpack_ol: usize,
++
++    // Per-round metadata populated by fill() before graph capture/replay:
++    valid: bool = false,
++    segs: u8 = 0,
++    max_seg_bucket: u8 = 0,
++    give_rows: u8 = 0,
++    take_rows: u8 = 0,
++    attn_rows: u8 = 0,
++    max_nch: u8 = 0,
++    pool_blocks: u16 = 0,
++    kind: dsa_block.SegsKind = .dense,
++    lat_ps0: u64 = 0,
++    pk_ps0: u64 = 0,
++    rb: usize = 0,
++
++    pub fn init(d: *const cuda.Driver, w: *const weights.Weights) !Table {
++        var kl: usize = 0;
++        var ml: usize = 0;
++        for (w.layers) |l| switch (l.mixer) {
++            .kda => kl += 1,
++            .mla => ml += 1,
++        };
++        var off: usize = 0;
++        const off_copies = off;
++        off = align64(off + kl * @sizeOf(glue.Copies));
++        const off_kda = off;
++        off = align64(off + kl * @sizeOf(kda.Segs));
++        const off_writes = off;
++        off = align64(off + ml * @sizeOf(dsa_block.WriteSegs));
++        const off_attns = off;
++        off = align64(off + ml * @sizeOf(latent.AttnSegs));
++        const off_pack_qa = off;
++        off = align64(off + @sizeOf(glue.Copies));
++        const off_unpack_ol = off;
++        off = align64(off + @sizeOf(glue.Copies));
++        const total = @max(off, 64);
++
++        var dev = try cuda.DeviceBuffer.alloc(d, total);
++        errdefer dev.free();
++        const host = try cuda.HostBuffer.alloc(d, total);
++        return .{
++            .d = d,
++            .dev = dev,
++            .host = host,
++            .total_bytes = total,
++            .kda_layers = kl,
++            .mla_layers = ml,
++            .off_copies = off_copies,
++            .off_kda = off_kda,
++            .off_writes = off_writes,
++            .off_attns = off_attns,
++            .off_pack_qa = off_pack_qa,
++            .off_unpack_ol = off_unpack_ol,
++        };
++    }
++
++    pub fn deinit(t: *Table) void {
++        t.dev.free();
++        t.host.free();
++    }
++
++    pub fn copiesDev(t: *const Table, li: usize) u64 {
++        return t.dev.ptr + t.off_copies + li * @sizeOf(glue.Copies);
++    }
++
++    pub fn kdaDev(t: *const Table, li: usize) u64 {
++        return t.dev.ptr + t.off_kda + li * @sizeOf(kda.Segs);
++    }
++
++    pub fn writesDev(t: *const Table, di: usize) u64 {
++        return t.dev.ptr + t.off_writes + di * @sizeOf(dsa_block.WriteSegs);
++    }
++
++    pub fn attnsDev(t: *const Table, di: usize) u64 {
++        return t.dev.ptr + t.off_attns + di * @sizeOf(latent.AttnSegs);
++    }
++
++    pub fn packQaDev(t: *const Table) u64 {
++        return t.dev.ptr + t.off_pack_qa;
++    }
++
++    pub fn unpackOlDev(t: *const Table) u64 {
++        return t.dev.ptr + t.off_unpack_ol;
++    }
++
++    pub fn giveQaBuf(kv: *const kv_attn.Ctx, rb: usize) u64 {
++        return kv.pq + give_pack_row_off * rb;
++    }
++
++    pub fn giveOlBuf(kv: *const kv_attn.Ctx, rb: usize) u64 {
++        return kv.po + give_pack_row_off * rb;
++    }
++
++    fn hostSlice(t: *Table, comptime T: type, off: usize, count: usize) []T {
++        const ptr: [*]T = @ptrCast(@alignCast(t.host.bytes.ptr + off));
++        return ptr[0..count];
++    }
++
++    /// Populate all 45 layers' segment tables in pinned host memory and upload them asynchronously in one H2D copy.
++    /// Sets `t.valid = false` if the current shared window is not eligible (e.g. mixed dense+sparse, host KV, or small kv_room).
++    pub fn fill(t: *Table, f: *const fw.Forward, r: fw.Rank) !void {
++        t.valid = false;
++        const b = r.b;
++        const n = r.segs.len;
++        if (b.prefill or !f.kda_wide or !f.m.shared_segs or !f.m.shared_writes) return;
++        if (n == 0 or n > latent.max_segs or n > kda.max_segs or n > glue.max_copies) return;
++        if (b.part_chunks == 0 or b.part_chunks < @max(b.nch, latent.chunksFor(sparse.width))) return;
++
++        var max_seg_rows: usize = 0;
++        for (r.segs) |g| {
++            if (g.rows == 0 or g.rows > b.part_rows) return;
++            max_seg_rows = @max(max_seg_rows, g.rows);
++        }
++        const bucket = bucketRows(max_seg_rows);
++        if (bucket > 255) return;
++
++        // Validate sharded room capacity if KV_SHARD is active.
++        var give_rows: usize = 0;
++        var take_rows: usize = 0;
++        var attn_rows: usize = 0;
++        var entries: usize = 0;
++        var roles: [latent.max_segs]kv_attn.Role = undefined;
++        for (r.segs, 0..) |g, i| {
++            const rl: kv_attn.Role = if (f.kv) |kv| kv_attn.role(g.st.hold, kv.rank) else .local;
++            roles[i] = rl;
++            switch (rl) {
++                .local => {
++                    entries += 1;
++                    attn_rows += g.rows;
++                },
++                .take => {
++                    entries += 2;
++                    take_rows += g.rows;
++                    attn_rows += 2 * g.rows;
++                },
++                .give => {
++                    give_rows += g.rows;
++                },
++            }
++        }
++        if (entries > latent.max_segs or attn_rows * b.part_chunks > b.dsa.partials.rows) return;
++        if (f.kv) |kv| {
++            if (give_rows + give_pack_row_off > kv.rows or take_rows > give_pack_row_off) return;
++        }
++
++        // Fill KDA per-layer tables.
++        const copies_arr = t.hostSlice(glue.Copies, t.off_copies, t.kda_layers);
++        const kda_arr = t.hostSlice(kda.Segs, t.off_kda, t.kda_layers);
++        const writes_arr = t.hostSlice(dsa_block.WriteSegs, t.off_writes, t.mla_layers);
++        const attns_arr = t.hostSlice(latent.AttnSegs, t.off_attns, t.mla_layers);
++
++        var li: usize = 0;
++        var di: usize = 0;
++        var kind_all: ?dsa_block.SegsKind = null;
++        var ps0_all: u64 = 0;
++        var lat_ps0_all: u64 = 0;
++        var max_nch_all: usize = 0;
++        var rb_all: usize = 0;
++
++        for (r.w.layers) |l| {
++            switch (l.mixer) {
++                .kda => |k| {
++                    const hd = k.heads * kda.dk;
++                    const w = k.matWidth();
++                    const s = b.kda;
++                    var cp: glue.Copies = std.mem.zeroes(glue.Copies);
++                    var ks: kda.Segs = std.mem.zeroes(kda.Segs);
++                    for (r.segs, 0..) |g, i| {
++                        const st = g.st;
++                        const cur = st.cur[li];
++                        const p_dst = st.proj + li * st.proj_layer * 2;
++                        const p_src = b.kproj + g.row0 * w * 2;
++                        const bytes = g.rows * w * 2;
++                        if (!glue.copyFits(p_src, p_dst, bytes)) return;
++                        cp.c[i] = .{ .src = p_src, .dst = p_dst, .n = @intCast(bytes / 16) };
++                        const kv_off = li * fw.window_rows * st.heads * kda.dk;
++                        ks.s[i] = .{
++                            .p = p_dst,
++                            .a = s.ka + g.row0 * hd * 2,
++                            .g = s.kg + g.row0 * hd * 2,
++                            .cs = st.conv + li * 3 * st.conv_c * 2,
++                            .state_in = st.recAt(cur, li),
++                            .state_out = st.recAt(1 - cur, li),
++                            .q = s.wide.q + g.row0 * hd * 4,
++                            .k = st.save_k + kv_off * 4,
++                            .v = st.save_v + kv_off * 2,
++                            .gs = st.save_g + kv_off * 4,
++                            .b = st.save_b + li * fw.window_rows * st.heads * 4,
++                            .y = s.wide.y + g.row0 * hd * 2,
++                            .out = s.saves.out + g.row0 * hd * 2,
++                            .rows = @intCast(g.rows),
++                        };
++                    }
++                    copies_arr[li] = cp;
++                    kda_arr[li] = ks;
++                    li += 1;
++                },
++                .mla => |a| {
++                    const rb = kv_attn.rowBytes(a);
++                    if (di == 0) rb_all = rb else if (rb != rb_all) return;
++                    var caches: [latent.max_segs]dsa_block.Caches = undefined;
++                    var host_pos: [latent.max_segs]usize = undefined;
++                    var seg_rows: [latent.max_segs]usize = undefined;
++                    const ps0 = r.segs[0].st.caches[di].ps;
++                    const lat_ps0 = r.segs[0].st.caches[di].latPs();
++                    if (di == 0) {
++                        ps0_all = ps0;
++                        lat_ps0_all = lat_ps0;
++                    } else if (ps0 != ps0_all or lat_ps0 != lat_ps0_all) return;
++                    for (r.segs, 0..) |g, i| {
++                        caches[i] = g.st.caches[di];
++                        host_pos[i] = g.st.pos;
++                        seg_rows[i] = g.rows;
++                        if (caches[i].ps != ps0 or caches[i].latPs() != lat_ps0) return;
++                    }
++                    const kind = dsa_block.segsKind(a, caches[0..n], host_pos[0..n], seg_rows[0..n]) orelse return;
++                    if (kind_all) |prev| {
++                        if (prev != kind) return;
++                    } else {
++                        kind_all = kind;
++                    }
++
++                    var wt: dsa_block.WriteSegs = std.mem.zeroes(dsa_block.WriteSegs);
++                    wt.n = @intCast(n);
++                    var blocks: usize = 0;
++                    for (r.segs, 0..) |g, i| {
++                        wt.s[i] = dsa_block.writeSeg(a, caches[i], dsa_block.attendScratch(a, b.dsa, g.row0), g.st.pos_dev, g.rows, g.row0, blocks) catch return;
++                        blocks += dsa_block.poolBlocks(g.rows);
++                    }
++                    writes_arr[di] = wt;
++
++                    var at: latent.AttnSegs = std.mem.zeroes(latent.AttnSegs);
++                    var ai: usize = 0;
++                    var arow: usize = 0;
++                    var take_off: usize = 0;
++                    for (r.segs, 0..) |g, i| {
++                        if (roles[i] == .give) continue;
++                        const v = dsa_block.attendScratch(a, b.dsa, g.row0);
++                        const tok = b.dsa.tokens + g.row0 * sparse.width * 4;
++                        const cnt = b.dsa.counts + g.row0 * 4;
++                        const seg_nch: usize = if (kind == .dense) @min(latent.chunksFor(g.st.pos + g.rows), b.nch) else latent.chunksFor(sparse.width);
++                        max_nch_all = @max(max_nch_all, seg_nch);
++                        const p_own = b.part_chunks * arow * a.heads;
++                        at.s[ai] = .{
++                            .qa = v.qa,
++                            .lc = caches[i].lc,
++                            .scales = caches[i].ls,
++                            .pos = if (kind == .dense) g.st.pos_dev else 0,
++                            .tok = if (kind == .sparse) tok else 0,
++                            .cnt = if (kind == .sparse) cnt else 0,
++                            .po = b.dsa.partials.po + p_own * a.lw * 4,
++                            .pm = b.dsa.partials.pm + p_own * 4,
++                            .pl = b.dsa.partials.pl + p_own * 4,
++                            .pt = caches[i].latPt(),
++                            .out = v.ol,
++                            .rows = @intCast(g.rows),
++                            .nch = @intCast(seg_nch),
++                            .row0 = @intCast(arow),
++                        };
++                        ai += 1;
++                        arow += g.rows;
++                        if (roles[i] == .take) {
++                            const kv = f.kv.?;
++                            const p_peer = b.part_chunks * arow * a.heads;
++                            at.s[ai] = .{
++                                .qa = kv.pq + take_off * rb,
++                                .lc = caches[i].lc,
++                                .scales = caches[i].ls,
++                                .pos = if (kind == .dense) g.st.pos_dev else 0,
++                                .tok = if (kind == .sparse) tok else 0,
++                                .cnt = if (kind == .sparse) cnt else 0,
++                                .po = b.dsa.partials.po + p_peer * a.lw * 4,
++                                .pm = b.dsa.partials.pm + p_peer * 4,
++                                .pl = b.dsa.partials.pl + p_peer * 4,
++                                .pt = caches[i].latPt(),
++                                .out = kv.po + take_off * rb,
++                                .rows = @intCast(g.rows),
++                                .nch = @intCast(seg_nch),
++                                .row0 = @intCast(arow),
++                            };
++                            ai += 1;
++                            arow += g.rows;
++                            take_off += g.rows;
++                        }
++                    }
++                    at.n = @intCast(ai);
++                    attns_arr[di] = at;
++                    di += 1;
++                },
++            }
++        }
++
++        // Build contiguous .give pack/unpack tables (identical across all MLA layers).
++        const pack_ptr = &t.hostSlice(glue.Copies, t.off_pack_qa, 1)[0];
++        const unpack_ptr = &t.hostSlice(glue.Copies, t.off_unpack_ol, 1)[0];
++        pack_ptr.* = std.mem.zeroes(glue.Copies);
++        unpack_ptr.* = std.mem.zeroes(glue.Copies);
++        if (give_rows > 0 and t.mla_layers > 0) {
++            const kv = f.kv.?;
++            const gq = giveQaBuf(kv, rb_all);
++            const go = giveOlBuf(kv, rb_all);
++            var g_off: usize = 0;
++            for (r.segs, 0..) |g, i| {
++                if (roles[i] != .give) continue;
++                const bytes = g.rows * rb_all;
++                const qa_src = b.dsa.qa + g.row0 * rb_all;
++                const ol_dst = b.dsa.ol + g.row0 * rb_all;
++                const gq_dst = gq + g_off * rb_all;
++                const go_src = go + g_off * rb_all;
++                if (!glue.copyFits(qa_src, gq_dst, bytes) or !glue.copyFits(go_src, ol_dst, bytes)) return;
++                pack_ptr.c[i] = .{ .src = qa_src, .dst = gq_dst, .n = @intCast(bytes / 16) };
++                unpack_ptr.c[i] = .{ .src = go_src, .dst = ol_dst, .n = @intCast(bytes / 16) };
++                g_off += g.rows;
++            }
++        }
++
++        // One async H2D DMA of the entire 45-layer descriptor table before graph replay.
++        try t.d.check(t.d.api.cuMemcpyHtoDAsync_v2(t.dev.ptr, t.host.bytes.ptr, t.total_bytes, f.stream.handle), "cuMemcpyHtoDAsync");
++
++        t.segs = @intCast(n);
++        t.max_seg_bucket = @intCast(bucket);
++        t.give_rows = @intCast(give_rows);
++        t.take_rows = @intCast(take_rows);
++        t.attn_rows = @intCast(attn_rows);
++        t.max_nch = @intCast(max_nch_all);
++        t.pool_blocks = @intCast(n * (bucket / 4 + 2));
++        t.kind = kind_all orelse .dense;
++        t.lat_ps0 = lat_ps0_all;
++        t.pk_ps0 = ps0_all;
++        t.rb = rb_all;
++        t.valid = true;
++    }
++};
++
++test "shared table: row bucketing collapses small variations to {4, 8, 16}" {
++    try std.testing.expectEqual(@as(usize, 4), bucketRows(1));
++    try std.testing.expectEqual(@as(usize, 4), bucketRows(4));
++    try std.testing.expectEqual(@as(usize, 8), bucketRows(5));
++    try std.testing.expectEqual(@as(usize, 8), bucketRows(8));
++    try std.testing.expectEqual(@as(usize, 16), bucketRows(12));
++    try std.testing.expectEqual(@as(usize, 24), bucketRows(24));
++}

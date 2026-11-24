@@ -1,0 +1,189 @@
+From 1e39b1d5329cae7ddc80cc478a8000bea3d18fdd Mon Sep 17 00:00:00 2001
+From: sfxnz <248329760+sfxnz@users.noreply.github.com>
+Date: Mon, 23 Nov 2026 14:01:43 +0000
+Subject: [PATCH 17/39] glm cuda: vectorized 16-byte cp.async double-buffered
+ FP8 MLA (VEC8) and FP8-pages start test
+
+---
+ zig/kernels/cuda/common/mla.cuh          | 104 +++++++++++++++++++++--
+ zig/src/families/glm/cuda_start_test.zig |   9 +-
+ 2 files changed, 97 insertions(+), 16 deletions(-)
+
+diff --git a/zig/kernels/cuda/common/mla.cuh b/zig/kernels/cuda/common/mla.cuh
+index fb535d042..6973377ed 100644
+--- a/zig/kernels/cuda/common/mla.cuh
++++ b/zig/kernels/cuda/common/mla.cuh
+@@ -46,7 +46,8 @@ constexpr int wide_smem() {
+ // RW roped columns (Ling's 64) follow the latent in q and keys; SPLIT: block z is chunk z * sw + sr, keys page z.
+ // PAGED8: an E4M3 cache on KV pages (pt, pstep bytes apart): a dense chunk is one page, a sparse key's logical token goes
+ // through the table to its page; codes and scales then load as on a window, so the arithmetic is the window's.
+-template <int HB, bool FP8 = false, int RW = 0, bool SPLIT = false, bool PAGED8 = false>
++// VEC8: vectorized 16-byte cp.async double-buffered E4M3 loader + uint4 smem stores (same dequant bits, zero extra smem).
++template <int HB, bool FP8 = false, int RW = 0, bool SPLIT = false, bool PAGED8 = false, bool VEC8 = FP8>
+ __device__ void chunks_wide(const __nv_bfloat16* qa, const __nv_bfloat16* lc, const int* pos, const int* tok,
+                             const int* cnt, float* po, float* pm, float* pl, int64_t rows, int64_t heads, int64_t w,
+                             float scale, int sparse, const int* pt, int64_t pstep, const float* scales = nullptr,
+@@ -54,6 +55,7 @@ __device__ void chunks_wide(const __nv_bfloat16* qa, const __nv_bfloat16* lc, co
+   static_assert(!(FP8 && RW != 0), "the E4M3 cache holds the latent alone");
+   static_assert(!(SPLIT && FP8), "a split cache holds BF16 rows");
+   static_assert(!(PAGED8 && !FP8), "PAGED8 requires FP8");
++  static_assert(!VEC8 || (FP8 && KT == 32 && LW == 512), "VEC8 stages 32 x 512-byte E4M3 rows across 8 warps");
+   constexpr int MT = HB / 16, KW = LW + RW;
+   extern __shared__ __align__(16) unsigned char smem[];
+   __nv_bfloat16* qs = reinterpret_cast<__nv_bfloat16*>(smem);
+@@ -79,6 +81,74 @@ __device__ void chunks_wide(const __nv_bfloat16* qa, const __nv_bfloat16* lc, co
+       scales8 = reinterpret_cast<const float*>(reinterpret_cast<const unsigned char*>(scales) + page) - start;
+     }
+   }
++  auto stage_fp8 = [&](int tile, float& sc_out) {
++    unsigned char* fp8_dst = reinterpret_cast<unsigned char*>(kvs + (tile & 1) * KT * KW) + KT * LW;
++    const int64_t first = start + tile * KT;
++    int64_t lane_page = 0, lane_row = 0;
++    int lane_ok = 0;
++    float lane_scale = 1.0f;
++    if (lane < 4) {
++      const int64_t ki = first + lane * 8 + warp;
++      const bool ok = sparse ? ki < n : ki <= limit;
++      lane_ok = ok ? 1 : 0;
++      if (ok) {
++        const int64_t src = sparse ? (int64_t)tok[r * w + ki] : ki;
++        if constexpr (PAGED8) {
++          lane_page = (int64_t)pt[src >> 9] * pstep;
++          lane_row = src & (CH - 1);
++        } else {
++          lane_page = 0;
++          lane_row = src;
++        }
++        const float* scale_at =
++            reinterpret_cast<const float*>(reinterpret_cast<const unsigned char*>(scales) + lane_page);
++        lane_scale = scale_at[lane_row];
++      }
++    }
++    sc_out = lane_scale;
++#pragma unroll
++    for (int p = 0; p < 4; ++p) {
++      const int key = p * 8 + warp;
++      const int ok = __shfl_sync(0xffffffffu, lane_ok, p);
++      const int64_t page = __shfl_sync(0xffffffffu, lane_page, p);
++      const int64_t row = __shfl_sync(0xffffffffu, lane_row, p);
++      const unsigned char* src_ptr =
++          reinterpret_cast<const unsigned char*>(lc) + page + (ok ? row * LW + lane * 16 : 0);
++      cp16(fp8_dst + key * LW + lane * 16, src_ptr, ok != 0);
++    }
++  };
++  auto unpack_fp8 = [&](int tile, float sc_in) {
++    const unsigned char* fp8_src = reinterpret_cast<const unsigned char*>(kvs + (tile & 1) * KT * KW) + KT * LW;
++    __nv_bfloat16* dst = kvs + (tile & 1) * KT * KW;
++    auto store16 = [&](uint4 raw, int key, float row_scale) {
++      auto cvt2 = [&](uint32_t w32) -> uint2 {
++        const float2 v0 = __half22float2(__half2(__nv_cvt_fp8x2_to_halfraw2(w32 & 0xffffu, __NV_E4M3)));
++        const float2 v1 = __half22float2(__half2(__nv_cvt_fp8x2_to_halfraw2(w32 >> 16, __NV_E4M3)));
++        const __nv_bfloat162 b0 = __floats2bfloat162_rn(__fmul_rn(v0.x, row_scale), __fmul_rn(v0.y, row_scale));
++        const __nv_bfloat162 b1 = __floats2bfloat162_rn(__fmul_rn(v1.x, row_scale), __fmul_rn(v1.y, row_scale));
++        uint2 r2;
++        r2.x = *reinterpret_cast<const uint32_t*>(&b0);
++        r2.y = *reinterpret_cast<const uint32_t*>(&b1);
++        return r2;
++      };
++      const uint2 a0 = cvt2(raw.x), a1 = cvt2(raw.y);
++      const uint2 b0 = cvt2(raw.z), b1 = cvt2(raw.w);
++      *reinterpret_cast<uint4*>(dst + wide(key, lane * 2)) = make_uint4(a0.x, a0.y, a1.x, a1.y);
++      *reinterpret_cast<uint4*>(dst + wide(key, lane * 2 + 1)) = make_uint4(b0.x, b0.y, b1.x, b1.y);
++    };
++    const float sc0 = __shfl_sync(0xffffffffu, sc_in, 0);
++    const float sc1 = __shfl_sync(0xffffffffu, sc_in, 1);
++    const float sc2 = __shfl_sync(0xffffffffu, sc_in, 2);
++    const float sc3 = __shfl_sync(0xffffffffu, sc_in, 3);
++    store16(*reinterpret_cast<const uint4*>(fp8_src + warp * LW + lane * 16), warp, sc0);
++    store16(*reinterpret_cast<const uint4*>(fp8_src + (8 + warp) * LW + lane * 16), 8 + warp, sc1);
++    __syncthreads();
++    store16(*reinterpret_cast<const uint4*>(fp8_src + (16 + warp) * LW + lane * 16), 16 + warp, sc2);
++    __syncthreads();
++    const uint4 raw3 = *reinterpret_cast<const uint4*>(fp8_src + (24 + warp) * LW + lane * 16);
++    __syncthreads();
++    store16(raw3, 24 + warp, sc3);
++  };
+   auto load_kv = [&](int tile) {
+     __nv_bfloat16* dst = kvs + (tile & 1) * KT * KW;
+     const int64_t first = start + tile * KT;
+@@ -125,19 +195,27 @@ __device__ void chunks_wide(const __nv_bfloat16* qa, const __nv_bfloat16* lc, co
+     for (int j = 0; j < 8; ++j)
+       for (int e = 0; e < 4; ++e) o[i][j][e] = 0.0f;
+   constexpr int tiles = CH / KT;
++  float sc_cur = 1.0f, sc_nxt = 1.0f;
+   if (live) {
+     for (int idx = t; idx < HB * (KW / 8); idx += blockDim.x) {
+       const int hd = idx / (KW / 8), u = idx % (KW / 8);
+       const bool ok = h0 + hd < heads;
+       cp16(qs + wide<KW>(hd, u), qa + (r * heads + (ok ? h0 + hd : 0)) * KW + u * 8, ok);
+     }
+-    load_kv(0);
+-    commit();
+-    load_kv(1);
+-    commit();
++    if constexpr (VEC8) {
++      stage_fp8(0, sc_cur);
++      commit();
++      stage_fp8(1, sc_nxt);
++      commit();
++    } else {
++      load_kv(0);
++      commit();
++      load_kv(1);
++      commit();
++    }
+   }
+   for (int tile = 0; live && tile < tiles; ++tile) {
+-    if constexpr (FP8) {
++    if constexpr (FP8 && !VEC8) {
+       wait<0>();
+     } else {
+       if (tile + 1 < tiles)
+@@ -146,6 +224,10 @@ __device__ void chunks_wide(const __nv_bfloat16* qa, const __nv_bfloat16* lc, co
+         wait<0>();
+     }
+     __syncthreads();
++    if constexpr (VEC8) {
++      unpack_fp8(tile, sc_cur);
++      __syncthreads();
++    }
+     const __nv_bfloat16* kv = kvs + (tile & 1) * KT * KW;
+     const int64_t first = start + tile * KT;
+     float sc[4];
+@@ -227,8 +309,14 @@ __device__ void chunks_wide(const __nv_bfloat16* qa, const __nv_bfloat16* lc, co
+     __syncthreads();
+     for (int i = 0; i < MT; ++i)
+       for (int hf = 0; hf < 2; ++hf) l[i][hf] = __fmaf_rn(l[i][hf], alpha[i][hf], stat[HB + i * 16 + hf * 8 + g]);
+-    if (tile + 2 < tiles) load_kv(tile + 2);
+-    commit();
++    if constexpr (VEC8) {
++      sc_cur = sc_nxt;
++      if (tile + 2 < tiles) stage_fp8(tile + 2, sc_nxt);
++      commit();
++    } else {
++      if (tile + 2 < tiles) load_kv(tile + 2);
++      commit();
++    }
+   }
+   for (int i = 0; i < MT; ++i)
+     for (int e = 0; e < 4; ++e) {
+diff --git a/zig/src/families/glm/cuda_start_test.zig b/zig/src/families/glm/cuda_start_test.zig
+index 54341b9f0..cdf60ed44 100644
+--- a/zig/src/families/glm/cuda_start_test.zig
++++ b/zig/src/families/glm/cuda_start_test.zig
+@@ -145,14 +145,7 @@ test "GLM startup: legacy paging matrix preserves settings and reports each rank
+         const last_rank = @min(world, 2);
+         for (0..last_rank) |rank| {
+             var w: World = .{ .expected_world = world };
+-            if (kv8 and c.fp8_refuses) {
+-                try std.testing.expectError(error.Fp8OnPages, run(&w, rank, world, c.raw, kv8));
+-                try std.testing.expect(!w.constructed[rank]);
+-                try std.testing.expectEqual(@as(usize, 0), w.reports);
+-                try std.testing.expectEqual(@as(usize, 1), w.notifications);
+-                continue;
+-            }
+-            const pages = !kv8 and (if (world == 1) c.single else c.multi);
++            const pages = if (kv8) c.fp8_refuses else (if (world == 1) c.single else c.multi);
+             try run(&w, rank, world, c.raw, kv8);
+             try std.testing.expectEqualDeep(Settings{ .kv8 = kv8, .pages = pages }, w.settings[rank].?);
+             try std.testing.expectEqual(@as(usize, 1), w.reports);

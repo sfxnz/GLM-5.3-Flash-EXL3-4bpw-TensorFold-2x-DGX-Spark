@@ -1,0 +1,6 @@
+[tensorfold] done chatcmpl-c9cf97bbab7bd61faa79d05ea835a9fb prompt=32 cached=0 thinking=False effort=none tokens=300 sha=5f1ca178005a finish=length rounds=72 accepted=227/291 ttft=0.186 decode=4.783 elapsed=4.969 queued=0.000 tok/s=62.5
+[tensorfold] done chatcmpl-48e75ccabd7057c30d76bef477a52c4b prompt=10109 cached=8192 thinking=False effort=none tokens=1 sha=6686fc4c7490 finish=length rounds=0 accepted=0/0 ttft=1.711 decode=0.000 elapsed=1.711 queued=0.000 tok/s=0.0 seed=5029361883519742750
+info: graph cache glm verify: captured, 32 held: MemAvailable 9.50 -> 9.50 GiB (0 MiB)
+info: graph cache glm verify: captured, 32 held: MemAvailable 9.50 -> 9.50 GiB (0 MiB)
+info: graph cache glm verify: captured, 32 held: MemAvailable 9.50 -> 9.50 GiB (0 MiB)
+[tensorfold] done chatcmpl-5a9ca02cfde4c91bc67219626f91d4a5 prompt=263020 cached=0 thinking=False effort=none tokens=8 sha=eb3cb4e701d4 finish=stop rounds=3 accepted=5/6 ttft=166.036 decode=0.199 elapsed=166.235 queued=0.000 tok/s=35.2 seed=8427019649173870038

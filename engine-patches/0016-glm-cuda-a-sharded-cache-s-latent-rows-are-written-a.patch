@@ -1,0 +1,42 @@
+From 680c0222ed10f93cbf17be41ec4f2222ace2ef22 Mon Sep 17 00:00:00 2001
+From: local <local@x>
+Date: Fri, 20 Nov 2026 20:20:11 +0200
+Subject: [PATCH 16/39] glm cuda: a sharded cache's latent rows are written and
+ read through the latent table, also for the MTP head's prompt rows
+
+tables() built the latent table from the key pages' pointer and stride; sharded the latent pages have their own,
+so blockLastRow (the target MTP head's prompt chunk, present beside DFlash2) wrote its E4M3 rows and scales at
+the wrong offsets and overwrote other layers' latent parts. Its last-row dense attention read the same wrong table.
+---
+ zig/src/families/glm/cuda_dsa_block.zig | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/zig/src/families/glm/cuda_dsa_block.zig b/zig/src/families/glm/cuda_dsa_block.zig
+index 13337b45b..188f17e1f 100644
+--- a/zig/src/families/glm/cuda_dsa_block.zig
++++ b/zig/src/families/glm/cuda_dsa_block.zig
+@@ -251,7 +251,7 @@ fn attendLastRow(k: Kernels, stream: cuda.Stream, l: Layer, c: Caches, s: Scratc
+     const scale: f32 = @floatCast(std.math.pow(f64, @floatFromInt(l.qk), -0.5));
+     if (host_pos < l.dense_limit) { // the same keys today's whole-chunk call read for this row
+         var stamp = prof.span(k.prof, stream, .mla);
+-        try latent.attentionFormat(k.set, stream, v.qa, c.lc, c.ls, .{ .pt = c.pt, .ps = c.ps }, at, v.partials, v.ol, v.dummy, 1, l.heads, l.lw, nch, scale, latent.headBlock(rows));
++        try latent.attentionFormat(k.set, stream, v.qa, c.lc, c.ls, .{ .pt = c.latPt(), .ps = c.latPs() }, at, v.partials, v.ol, v.dummy, 1, l.heads, l.lw, nch, scale, latent.headBlock(rows));
+         stamp.end();
+     }
+     if (sparseRows(l, host_pos, rows)) {
+@@ -284,12 +284,12 @@ fn denseAttention(k: Kernels, stream: cuda.Stream, l: Layer, c: Caches, s: Scrat
+ }
+ 
+ /// A cache's tables: latent rows `t`, and pooled keys `tk` (on their own device pages under TF_GLM_KV_HOST).
++/// The latent table is the latent pages' own (`latPt`/`latPs`): sharded (TF_GLM_KV_SHARD) they are not the key pages'.
+ fn tables(l: Layer, c: Caches) !struct { latent.Table, latent.Table } {
+     if (c.ps % (l.lw * 2) != 0 or c.latPs() % (l.lw * 2) != 0) return error.LatentShape; // pages whole latent rows apart (the token lists' unit)
+-    // an E4M3 cache's sparse lists stay positions (its chunks take each key through the table); BF16's are page rows
+-    const t: latent.Table = .{ .pt = c.pt, .ps = c.ps, .page_rows = c.ps / (l.lw * 2), .logical = c.ls != 0 };
++    const t = latTable(l, c);
+     // the pooled keys' table decides how tf_glm_dsa_tokens writes the lists, so it carries the latent table's units too
+-    return .{ t, .{ .pt = c.pt, .ps = if (c.pks != 0) c.pks else c.ps, .page_rows = t.page_rows, .logical = t.logical } };
++    return .{ t, .{ .pt = c.pt, .ps = if (c.pks != 0) c.pks else c.ps, .page_rows = c.ps / (l.lw * 2), .logical = t.logical } };
+ }
+ 
+ /// The latent rows' table (`tables`[0] but through Caches.latPt/latPs: the same unsharded).

@@ -1,0 +1,31 @@
+From 3f54195e2698ea9f838591a9d9608ecb5fab0b28 Mon Sep 17 00:00:00 2001
+From: local <local@x>
+Date: Fri, 20 Nov 2026 16:33:41 +0200
+Subject: [PATCH 14/39] glm dflash2: the selector skips candidate ids outside
+ the vocabulary (no-winner id 0x7fffffff crashed the host)
+
+---
+ zig/src/families/glm/dflash_select.zig | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/zig/src/families/glm/dflash_select.zig b/zig/src/families/glm/dflash_select.zig
+index 996398e1d..9930c8884 100644
+--- a/zig/src/families/glm/dflash_select.zig
++++ b/zig/src/families/glm/dflash_select.zig
+@@ -21,7 +21,7 @@ pub fn select(dr: *const df.Drafter, i: usize, M: usize, q: df.Req) void {
+         for (0..dr.world) |rk| {
+             const blk = dr.cand[rk * M * CW + r * CW ..][0..CW];
+             for (0..TOPK) |j| {
+-                if (blk[j] < 0) continue;
++                if (blk[j] < 0 or blk[j] >= df.VOCAB) continue; // the kernel's no-winner id is 0x7fffffff (NaN or -inf logits): never index the codebooks with it
+                 const cand: Cand = .{ .v = @bitCast(blk[TOPK + j]), .id = @intCast(blk[j]) };
+                 if (n < TOPK) {
+                     c[n] = cand;
+@@ -42,6 +42,7 @@ pub fn select(dr: *const df.Drafter, i: usize, M: usize, q: df.Req) void {
+             }
+             return;
+         }
++        if (prev >= df.VOCAB) prev = 0; // a corrupt anchor must not index past the codebook
+         const g = dr.gh[r * RANK ..][0..RANK];
+         const P = dr.pred[prev * RANK ..][0..RANK];
+         var pg: [RANK]f32 = undefined;

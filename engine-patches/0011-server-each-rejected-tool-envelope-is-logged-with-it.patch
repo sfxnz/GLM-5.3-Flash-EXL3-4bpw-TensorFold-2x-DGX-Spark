@@ -1,0 +1,531 @@
+From 0e80733deea27ad5bad14deb13fd3f43ce2f0542 Mon Sep 17 00:00:00 2001
+From: MiaAI_Lab <mia.ailab1@gmail.com>
+Date: Fri, 20 Nov 2026 01:43:31 +0200
+Subject: [PATCH 11/39] server: each rejected tool envelope is logged with its
+ reason, guard hides only unoffered calls
+
+---
+ zig/glm_exl3_prompt_host.zig            |  14 +--
+ zig/src/families/glm/cuda_exl3_test.zig |   6 +-
+ zig/src/families/glm/cuda_state.zig     |   9 +-
+ zig/src/server/openai_calls.zig         |  44 +++++++--
+ zig/src/server/server.zig               |  10 +-
+ zig/src/server/tool_guard.zig           | 116 ++++++++++++++++++++++--
+ zig/src/server/tool_parse.zig           |  45 ++++++++-
+ zig/src/server/tool_policy.zig          |  29 ++++--
+ 8 files changed, 240 insertions(+), 33 deletions(-)
+
+diff --git a/zig/glm_exl3_prompt_host.zig b/zig/glm_exl3_prompt_host.zig
+index f53075680..2dd3eb811 100644
+--- a/zig/glm_exl3_prompt_host.zig
++++ b/zig/glm_exl3_prompt_host.zig
+@@ -65,7 +65,7 @@ fn run(rows: usize, prompt: bool, shared: bool, count: usize) !void {
+     var k: glm.exl3.Kernels = undefined;
+     inline for (.{ "group", "rot_in", "gateup", "down_combine" }, .{ 9, 5, 13, 14 }) |field, id| @field(k, field) = Record.function(&d, id);
+     k.grouped = .{ Record.function(&d, 10), Record.function(&d, 11), Record.function(&d, 12) };
+-    k.prompt = .{ .rotate = Record.function(&d, 6), .gateup = Record.function(&d, 7), .down = Record.function(&d, 8) };
++    k.prompt = .{ .rotate = Record.function(&d, 6), .gateup = Record.function(&d, 7), .down = Record.function(&d, 8), .gateup_k6 = Record.function(&d, 21), .down_k6 = Record.function(&d, 22) };
+     var ek: glm.experts.Kernels = undefined;
+     inline for (.{ "plan_small", "plan_rows", "plan_rank", "plan_offsets", "plan_scatter", "plan_rank_rows", "plan_scatter_rows" }, .{ 1, 18, 2, 3, 4, 19, 20 }) |field, id| @field(ek.router, field) = Record.function(&d, id);
+     const w = glm.exl3.Experts{ .gt = 101, .ut = 102, .dt = 103, .k2 = 104, .suh_g = 105, .suh_u = 106, .svh_g = 107, .svh_u = 108, .suh_d = 109, .svh_d = 110, .shx = shared };
+@@ -135,11 +135,13 @@ fn guarded(text: []const u8, name: []const u8, payload: []const u8) bool {
+ }
+ 
+ test "GLM EXL3 prompt: shared-id guards precede payload loads and late-guard controls are caught" {
+-    try t.expect(guarded(source, "tf_exl3_prompt_gu(", "tgateup<"));
+-    try t.expect(guarded(source, "tf_exl3_prompt_down(", "members[first"));
++    try t.expect(guarded(source, "tf_exl3_prompt_gu(", "prompt_gu<"));
++    try t.expect(guarded(source, "tf_exl3_prompt_gu_k6(", "prompt_gu<"));
++    try t.expect(guarded(source, "#define TF_EXL3_PROMPT_DOWN_HEAD()", "members[first"));
+     const bad = try std.mem.replaceOwned(u8, t.allocator, source, "if (e == skip) return;", "const volatile int control_member = members[items[3 * item + 1]];\n    if (e == skip) return;");
+     defer t.allocator.free(bad);
+-    try t.expectEqual(@as(usize, 2), std.mem.count(u8, bad, "if (e == skip) return;"));
+-    try t.expect(!guarded(bad, "tf_exl3_prompt_gu(", "tgateup<"));
+-    try t.expect(!guarded(bad, "tf_exl3_prompt_down(", "members[first"));
++    try t.expectEqual(@as(usize, 3), std.mem.count(u8, bad, "if (e == skip) return;"));
++    try t.expect(!guarded(bad, "tf_exl3_prompt_gu(", "prompt_gu<"));
++    try t.expect(!guarded(bad, "tf_exl3_prompt_gu_k6(", "prompt_gu<"));
++    try t.expect(!guarded(bad, "#define TF_EXL3_PROMPT_DOWN_HEAD()", "members[first"));
+ }
+diff --git a/zig/src/families/glm/cuda_exl3_test.zig b/zig/src/families/glm/cuda_exl3_test.zig
+index 4b04d873a..a64bd2fe3 100644
+--- a/zig/src/families/glm/cuda_exl3_test.zig
++++ b/zig/src/families/glm/cuda_exl3_test.zig
+@@ -343,12 +343,12 @@ test "GLM EXL3: scratch covers the path each layer takes: the prompt kernels' wh
+         for ([_]x3.Experts{ four, mixed, any }) |w| for ([_]bool{ false, true }) |prefill| {
+             const l = x3.layer(w, cuda.grouped.max_experts, dims, width, 0);
+             const prompt = prefill and common.prompt.eligible(l);
+-            const need = x3.picksBytes(rows) + if (prompt) try common.prompt.bytes(l, n, x3.top_k) else try common.scratchBytes(l, n, x3.top_k);
++            const need = if (prompt) try common.prompt.bytes(l, @min(rows, x3.prompt_rows), x3.top_k + 1) else x3.picksBytes(rows) + try common.scratchBytes(l, n, x3.top_k);
+             try testing.expectEqual(need, x3.scratchFor(rows, dims, width, prefill, w)[0]);
+         };
+-        // a 4-bit layer's scratch is upstream's: picks, then the prompt kernels' (one rotation a row), or the grouped path's
++        // a 4-bit layer's scratch is upstream's: the prompt kernels' (one rotation a row), or picks + the grouped path's
+         const upstream: common.Layer = .{ .gate = 0, .up = 0, .down = 0, .gate_k2 = 0, .up_k2 = 0, .down_k2 = 0, .suh_g = 0, .suh_u = 0, .svh_g = 0, .svh_u = 0, .suh_d = 0, .svh_d = 0, .experts = cuda.grouped.max_experts, .dims = dims, .width = width, .codebook = .mcg, .act_mode = 0, .uniform_k2 = 8, .shared_input = true };
+-        try testing.expectEqual(x3.picksBytes(rows) + try common.prompt.bytes(upstream, n, x3.top_k), x3.scratchFor(rows, dims, width, true, four)[0]);
++        try testing.expectEqual(try common.prompt.bytes(upstream, @min(rows, x3.prompt_rows), x3.top_k + 1), x3.scratchFor(rows, dims, width, true, four)[0]);
+         try testing.expectEqual(x3.picksBytes(rows) + try common.scratchBytes(upstream, n, x3.top_k), x3.scratchFor(rows, dims, width, false, four)[0]);
+         for ([_]bool{ false, true }) |prefill| try testing.expectEqual(x3.scratchFor(rows, dims, width, prefill, four), x3.scratchBytes(rows, dims, width, prefill, true));
+         // buffers for every layer take the largest: a 4-bit layer's prompt arena grows to the mixed layer's grouped one
+diff --git a/zig/src/families/glm/cuda_state.zig b/zig/src/families/glm/cuda_state.zig
+index 3a3171762..ae3cedd63 100644
+--- a/zig/src/families/glm/cuda_state.zig
++++ b/zig/src/families/glm/cuda_state.zig
+@@ -103,7 +103,7 @@ fn onPages(x: *dsa_block.Caches, c: anytype, p: Paged, table: u64, j: usize, kv8
+ }
+ 
+ /// A State's fields in order; on pages (a table of `table` entries) no latent or pooled rows, and the table last.
+-fn stateSizes(gpa: std.mem.Allocator, w: *const weights.Weights, capacity: usize, kv8: bool, table: ?usize) ![]usize {
++fn stateSizes(gpa: std.mem.Allocator, w: *const weights.Weights, capacity: usize, kv8: bool, table: ?usize, head: bool) ![]usize {
+     const c = &w.config;
+     const s = &w.share;
+     const nd = mlaLayers(w);
+@@ -118,7 +118,10 @@ fn stateSizes(gpa: std.mem.Allocator, w: *const weights.Weights, capacity: usize
+     try sizes.appendSlice(gpa, &.{ 4, nk * 3 * 3 * n * 2, 2 * nk * s.kda.len() * kda.dk * kda.dv * 4, nk * window_rows * kw * 2 });
+     try sizes.appendSlice(gpa, &.{ nk * window_rows * n * 4, nk * window_rows * n * 2, nk * window_rows * n * 4, nk * window_rows * s.kda.len() * 4 });
+     const lc_bytes = try latent.cacheBytes(capacity, c.kv_lora, kv8);
+-    for (0..nd + 1) |_| try sizes.appendSlice(gpa, &.{ rows * lc_bytes, ring_rows * c.i_dim * 2, ring_rows * c.i_dim * 2, rows * pk_rows * c.i_dim * 2 });
++    for (0..nd + 1) |j| {
++        const keep: usize = @intFromBool(j < nd or head);
++        try sizes.appendSlice(gpa, &.{ rows * keep * lc_bytes, keep * ring_rows * c.i_dim * 2, keep * ring_rows * c.i_dim * 2, rows * keep * pk_rows * c.i_dim * 2 });
++    }
+     try sizes.appendSlice(gpa, &.{ 4, c.hidden * 2 }); // MTP position and sequence-owned first-draft row
+     if (table) |t| try sizes.append(gpa, t * 4);
+     return sizes.toOwnedSlice(gpa);
+@@ -417,7 +420,7 @@ pub const State = struct {
+     }
+ 
+     pub fn initFormat(gpa: std.mem.Allocator, d: *const cuda.Driver, w: *const weights.Weights, capacity: usize, kv8: bool) !State {
+-        return make(gpa, d, w, capacity, kv8, null);
++        return make(gpa, d, w, capacity, kv8, null, true);
+     }
+ 
+     /// A sequence whose latent rows and pooled keys are pages of `p`; it holds no rows until a stream maps some.
+diff --git a/zig/src/server/openai_calls.zig b/zig/src/server/openai_calls.zig
+index d7d4abef9..aa3ad8823 100644
+--- a/zig/src/server/openai_calls.zig
++++ b/zig/src/server/openai_calls.zig
+@@ -5,6 +5,7 @@ const chat = @import("chat.zig");
+ const tool_parse = @import("tool_parse.zig");
+ const tool_policy = @import("tool_policy.zig");
+ const tool_stream = @import("tool_stream.zig");
++const tool_guard = @import("tool_guard.zig");
+ const cortheon = @import("cortheon/cortheon.zig");
+ const log = @import("log.zig");
+ const Allocator = std.mem.Allocator;
+@@ -31,9 +32,19 @@ pub fn attach(r: anytype, reply: *chat.Reply) Allocator.Error!?[]Value {
+         reply.tool_calls_streamed = false;
+         return if (r.plan.policy.single and calls.len > 1) calls[0..1] else calls;
+     }
+-    const parsed = try tool_parse.parse(r.a, reply.content, tools, r.plan.policy.maxCalls());
++    // TF_TOOL_CALL_GUARD: a well-formed call to a tool the request did not offer leaves the reply; a malformed one stays
++    var parsed = try tool_parse.parseWith(r.a, reply.content, tools, r.plan.policy.maxCalls(), .{ .hide_unoffered = r.plan.policy.drop_rejected });
++    var hidden: usize = 0;
++    for (parsed.rejections) |j| hidden += @intFromBool(j.hidden);
++    // ...unless hiding would leave the reply with nothing in it: an empty reply reads as a failed generation, and an
++    // agent retries it blind, to the same call hidden again
++    const kept_whole = hidden > 0 and parsed.calls == null and parsed.content.len == 0;
++    if (kept_whole) {
++        parsed = try tool_parse.parse(r.a, reply.content, tools, r.plan.policy.maxCalls());
++        hidden = 0;
++    }
++    logRejections(r, reply, parsed.rejections, tools.len, kept_whole);
+     if (parsed.rejected_envelopes > 0) {
+-        log.line("warning: kept {d} malformed or unoffered tool envelopes as content", .{parsed.rejected_envelopes});
+         r.srv.metrics.keptToolCalls(r.srv.io, parsed.kept_unoffered, parsed.kept_malformed);
+         if (reply.runtime == .object) try reply.runtime.object.put(r.a, "kept_tool_calls", try keptBlock(r.a, parsed));
+     }
+@@ -41,10 +52,12 @@ pub fn attach(r: anytype, reply: *chat.Reply) Allocator.Error!?[]Value {
+     const cut = if (!r.plan.policy.single and std.mem.eql(u8, reply.finish_reason, "length")) try tool_stream.cutCalls(r.a, reply.content, tools) else null;
+     if (cut != null) reply.content = try @import("reply_text.zig").cutProse(r.a, reply.content);
+     const found = cut orelse parsed.calls;
+-    // TF_TOOL_CALL_GUARD: the envelopes the parser kept as text (unoffered tools, malformed calls) leave the reply
+-    const dropped = r.plan.policy.drop_rejected and parsed.rejected_envelopes > 0;
+-    const base = if (dropped) try tool_policy.hideCalls(r.a, parsed.content) else parsed.content;
+-    if (dropped) log.line("tool-call guard: hid {d} unoffered or malformed tool envelopes from {s}", .{ parsed.rejected_envelopes, r.id });
++    // a call the end token cut before its closer (not max_tokens): the reply keeps it as text, the log says so
++    if (cut == null and !std.mem.eql(u8, reply.finish_reason, "length")) if (tool_parse.openCall(parsed.content)) |at|
++        logRejection(r, reply, "unclosed", tool_parse.leadName(parsed.content[at + "<tool_call>".len ..]), parsed.content[at..], tools.len, "kept as text");
++    const dropped = hidden > 0;
++    const base = parsed.content;
++    if (dropped) log.line("tool-call guard: hid {d} call(s) to unoffered tools from {s}", .{ hidden, r.id });
+     const calls = (if (r.turn != null) cortheon.clientCalls(found) else found) orelse {
+         if (r.plan.policy.single or parsed.calls != null or dropped) reply.content = try r.plan.policy.parsedContent(r.a, base);
+         return null;
+@@ -85,3 +98,22 @@ fn keptBlock(a: Allocator, parsed: tool_parse.Parsed) Allocator.Error!Value {
+     }
+     return .{ .object = o };
+ }
++
++/// One line per envelope the parser rejected: the request, why, the name, the mode, what became of it.
++fn logRejections(r: anytype, reply: *const chat.Reply, list: []const tool_parse.Rejection, offered: usize, kept_whole: bool) void {
++    for (list) |j| {
++        const fate = if (j.hidden) "hidden (TF_TOOL_CALL_GUARD)" else if (kept_whole) "kept as text (hiding it would leave the reply empty)" else "kept as text";
++        logRejection(r, reply, j.reason.label(), j.name, j.envelope, offered, fate);
++    }
++}
++
++/// ``tool call rejected from ID: REASON ['NAME'] (N tools offered) thinking= effort=; FATE``, and with
++/// TF_TOOL_CALL_DEBUG=1 the envelope itself, escaped and cut to a line.
++fn logRejection(r: anytype, reply: *const chat.Reply, reason: []const u8, name: []const u8, envelope: []const u8, offered: usize, fate: []const u8) void {
++    var nb: [160]u8 = undefined;
++    const effort = if (reply.thinking) reply.effort orelse "none" else "none";
++    log.line("tool call rejected from {s}: {s} ['{s}'] ({d} tools offered) thinking={s} effort={s}; {s}", .{ r.id, reason, tool_guard.escaped(&nb, name), offered, if (reply.thinking) "True" else "False", effort, fate });
++    if (!tool_guard.debug()) return;
++    var eb: [1200]u8 = undefined;
++    log.line("tool call rejected from {s}: envelope ({d} bytes) {s}", .{ r.id, envelope.len, tool_guard.escaped(&eb, envelope) });
++}
+diff --git a/zig/src/server/server.zig b/zig/src/server/server.zig
+index 11428e871..4266ecce7 100644
+--- a/zig/src/server/server.zig
++++ b/zig/src/server/server.zig
+@@ -228,7 +228,15 @@ pub const Server = struct {
+             };
+         };
+         const a = srv.arena.allocator();
+-        srv.eos = try @import("extra_eos.zig").merge(a, text, try a.dupe(u32, text.eosIds()));
++        srv.eos = blk: {
++            const base = try a.dupe(u32, text.eosIds());
++            const raw = extra_eos.fromEnv() orelse break :blk base;
++            var unknown: []const u8 = "";
++            break :blk extra_eos.merge(a, base, raw, text, model_text.Text.tokenId, &unknown) catch |e| {
++                if (e == error.UnknownExtraEos) log.line("TF_EXTRA_EOS: token \"{s}\" is not in this tokenizer", .{unknown});
++                return e;
++            };
++        };
+         if (text.tokenId(reply_text.channel_markers.close) != null) srv.markers = reply_text.channel_markers;
+         const minimax = text.tokenId(reply_text.mm_markers.close) != null;
+         if (minimax) srv.markers = reply_text.mm_markers;
+diff --git a/zig/src/server/tool_guard.zig b/zig/src/server/tool_guard.zig
+index b73abdfa1..dcb1886d1 100644
+--- a/zig/src/server/tool_guard.zig
++++ b/zig/src/server/tool_guard.zig
+@@ -1,8 +1,10 @@
+ //! TF_TOOL_CALL_GUARD=1: a chat request that offers no tools (none sent, or tool_choice "none") although its history
+ //! called them gets a closing system note that tools are unavailable, and any tool-call markup the model writes anyway
+ //! is hidden from the reply (tool_stream.Policy.guard) instead of reaching the client as text. A request that does offer
+-//! tools has the envelopes the parser keeps as text (a call to a tool it did not offer, a malformed call) hidden the same
+-//! way (Policy.drop_rejected). Off by default.
++//! tools has its well-formed calls to tools it did not offer hidden (Policy.drop_rejected, tool_parse.Options); a
++//! malformed call stays as text, and a reply that hiding would leave empty keeps its calls, since an empty reply reads
++//! as a failed generation that agents retry blind. Off by default. Every rejected envelope is logged with its reason
++//! (``tool call rejected from ID: REASON ['NAME'] ...``); TF_TOOL_CALL_DEBUG=1 adds its text.
+ const std = @import("std");
+ const json = @import("json");
+ const Value = json.Value;
+@@ -12,16 +14,59 @@ const Allocator = std.mem.Allocator;
+ pub const note = "Tools are not available for this reply. Answer in plain text from what you already have; do not write tool calls.";
+ 
+ var cached: std.atomic.Value(u8) = .init(0); // 0 unread, 1 off, 2 on
++var cached_debug: std.atomic.Value(u8) = .init(0);
+ 
+ /// Whether TF_TOOL_CALL_GUARD is 1 (read once).
+ pub fn on() bool {
+-    const v = cached.load(.monotonic);
++    return flag(&cached, "TF_TOOL_CALL_GUARD");
++}
++
++/// Tests set the guard on or off; ``null`` makes the next ``on`` read the environment again.
++pub fn setForTest(v: ?bool) void {
++    cached.store(if (v) |set| (if (set) 2 else 1) else 0, .monotonic);
++}
++
++/// Whether TF_TOOL_CALL_DEBUG is 1 (read once): each rejected tool envelope's text goes to the log beside its reason.
++pub fn debug() bool {
++    return flag(&cached_debug, "TF_TOOL_CALL_DEBUG");
++}
++
++fn flag(slot: *std.atomic.Value(u8), comptime name: [:0]const u8) bool {
++    const v = slot.load(.monotonic);
+     if (v != 0) return v == 2;
+-    const set = if (std.c.getenv("TF_TOOL_CALL_GUARD")) |s| std.mem.eql(u8, std.mem.span(s), "1") else false;
+-    cached.store(if (set) 2 else 1, .monotonic);
++    const set = if (std.c.getenv(name)) |s| std.mem.eql(u8, std.mem.span(s), "1") else false;
++    slot.store(if (set) 2 else 1, .monotonic);
+     return set;
+ }
+ 
++/// `s` on one log line in `buf`: newline, tab, CR, backslash and other control bytes escaped, and when it does not fit,
++/// its head, "...", and the count of bytes left out.
++pub fn escaped(buf: []u8, s: []const u8) []const u8 {
++    const room = buf.len -| 32; // the tail note's room
++    var n: usize = 0;
++    for (s, 0..) |ch, i| {
++        var tmp: [4]u8 = undefined;
++        const piece: []const u8 = switch (ch) {
++            '\n' => "\\n",
++            '\r' => "\\r",
++            '\t' => "\\t",
++            '\\' => "\\\\",
++            0...8, 11, 12, 14...31, 127 => std.fmt.bufPrint(&tmp, "\\x{x:0>2}", .{ch}) catch unreachable,
++            else => blk: {
++                tmp[0] = ch;
++                break :blk tmp[0..1];
++            },
++        };
++        if (n + piece.len > room) {
++            const tail = std.fmt.bufPrint(buf[n..], "...(+{d} bytes)", .{s.len - i}) catch "";
++            return buf[0 .. n + tail.len];
++        }
++        @memcpy(buf[n..][0..piece.len], piece);
++        n += piece.len;
++    }
++    return buf[0..n];
++}
++
+ /// Whether `messages` (the normalized list) holds a tool result or an assistant turn with tool calls.
+ pub fn usedTools(messages: Value) bool {
+     if (messages != .array) return false;
+@@ -84,7 +129,66 @@ test "hideCalls: drop_rejected's filter keeps prose around an unoffered call" {
+     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+     defer arena.deinit();
+     const a = arena.allocator();
+-    const hide = @import("tool_stream.zig").hideCalls;
++    const hide = @import("tool_policy.zig").hideCalls;
+     try std.testing.expectEqualStrings("Let me check. ok", try hide(a, "Let me check.<tool_call>session_search<arg_key>q</arg_key><arg_value>x</arg_value></tool_call> ok"));
+     try std.testing.expectEqualStrings("plain", try hide(a, "plain"));
+ }
++
++test "parse: each rejected envelope carries its reason and name; hide_unoffered drops only well-formed unoffered calls" {
++    const tp = @import("tool_parse.zig");
++    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
++    defer arena.deinit();
++    const a = arena.allocator();
++    const tools = (try json.parse(a, "[{\"type\":\"function\",\"function\":{\"name\":\"shell_command\",\"parameters\":{\"type\":\"object\"}}}]")).ok.array;
++    const unoffered = "<tool_call>drive_preview<arg_key>id</arg_key><arg_value>7</arg_value></tool_call>";
++    // a dropped key name is not a rejection outside single-call mode: the call parses with no arguments
++    const missing_key = "<tool_call>shell_command<arg_key><arg_value>echo hi</arg_value></tool_call>";
++    const multiline_name = "<tool_call>shell\ncommand<arg_key>command</arg_key><arg_value>ls</arg_value></tool_call>";
++    const nameless = "<tool_call>{\"arguments\":{\"command\":\"ls\"}}</tool_call>";
++    const empty_name = "<tool_call><arg_key>command</arg_key><arg_value>ls</arg_value></tool_call>";
++    const good = "<tool_call>shell_command<arg_key>command</arg_key><arg_value>ls</arg_value></tool_call>";
++    const Case = struct { text: []const u8, reason: tp.Reason, name: []const u8 };
++    for ([_]Case{
++        .{ .text = unoffered, .reason = .unknown_tool_name, .name = "drive_preview" },
++        .{ .text = multiline_name, .reason = .malformed, .name = "shell" },
++        .{ .text = nameless, .reason = .malformed, .name = "" },
++        .{ .text = empty_name, .reason = .malformed, .name = "" },
++    }) |c| {
++        const r = try tp.parse(a, try std.mem.concat(a, u8, &.{ "Prose. ", c.text }), tools, null);
++        try std.testing.expect(r.calls == null); // a nameless or unoffered call is never a tool_calls entry
++        try std.testing.expectEqual(@as(usize, 1), r.rejections.len);
++        try std.testing.expectEqual(c.reason, r.rejections[0].reason);
++        try std.testing.expectEqualStrings(c.name, r.rejections[0].name);
++        try std.testing.expectEqualStrings(c.text, r.rejections[0].envelope);
++        try std.testing.expect(!r.rejections[0].hidden);
++    }
++    const lenient = try tp.parse(a, missing_key, tools, null);
++    try std.testing.expectEqualStrings("{}", lenient.calls.?[0].get("function").?.get("arguments").?.string);
++    try std.testing.expectEqual(@as(usize, 1), (try tp.parse(a, missing_key, tools, 1)).rejections.len);
++    // a mixed batch under the guard: the good call parses, the unoffered one leaves, the malformed one stays, prose stays
++    const hid = try tp.parseWith(a, "Let me look." ++ good ++ unoffered ++ nameless, tools, null, .{ .hide_unoffered = true });
++    try std.testing.expectEqual(@as(usize, 1), hid.calls.?.len);
++    try std.testing.expectEqualStrings("Let me look." ++ nameless, hid.content);
++    try std.testing.expectEqual(@as(usize, 2), hid.rejections.len);
++    try std.testing.expect(hid.rejections[0].hidden and !hid.rejections[1].hidden);
++}
++
++test "parse: a call to Hermes' offered tool_call bridge is that tool's call, whatever its arguments hold" {
++    const tp = @import("tool_parse.zig");
++    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
++    defer arena.deinit();
++    const a = arena.allocator();
++    const tools = (try json.parse(a, "[{\"type\":\"function\",\"function\":{\"name\":\"tool_call\",\"parameters\":{\"type\":\"object\",\"properties\":{\"calls\":{\"type\":\"array\"}}}}}]")).ok.array;
++    // calls[0] has no name: the client's tool refuses it ("tool_call calls[0] requires a 'name'"); the server forwards it
++    const r = try tp.parse(a, "<tool_call>tool_call<arg_key>calls</arg_key><arg_value>[{\"arguments\":{}}]</arg_value></tool_call>", tools, null);
++    try std.testing.expectEqualStrings("tool_call", r.calls.?[0].get("function").?.get("name").?.string);
++    try std.testing.expectEqual(@as(usize, 0), r.rejections.len);
++}
++
++test "escaped: one log line, control bytes escaped, a long envelope cut with its count" {
++    var wide: [64]u8 = undefined;
++    try std.testing.expectEqualStrings("a\\nb\\tc\\\\\\x01", escaped(&wide, "a\nb\tc\\\x01"));
++    var buf: [40]u8 = undefined; // 8 bytes of text beside the 32 kept for the note
++    const long: [100]u8 = @splat('x');
++    try std.testing.expectEqualStrings("xxxxxxxx...(+92 bytes)", escaped(&buf, &long));
++}
+diff --git a/zig/src/server/tool_parse.zig b/zig/src/server/tool_parse.zig
+index 0ec7795e7..89422e41d 100644
+--- a/zig/src/server/tool_parse.zig
++++ b/zig/src/server/tool_parse.zig
+@@ -29,8 +29,28 @@ pub const Parsed = struct {
+     kept_malformed: usize = 0,
+     /// The names the model wrote for kept calls that named an unoffered tool: eight at most, 64 bytes each.
+     unoffered_names: []const []const u8 = &.{},
++    rejections: []const Rejection = &.{},
+ };
+ 
++/// Why a whole envelope did not become a call: it names a tool the request did not offer (it parses as a call), or it
++/// is not a call in any spelling the parser reads (a missing key, a stray tag, an empty name, broken JSON).
++pub const Reason = enum {
++    unknown_tool_name,
++    malformed,
++
++    pub fn label(r: Reason) []const u8 {
++        return @tagName(r);
++    }
++};
++
++/// One rejected envelope: why, the tool name it carries (empty when none can be read), its text, and whether
++/// ``Options.hide_unoffered`` left it out of the content.
++pub const Rejection = struct { reason: Reason, name: []const u8, envelope: []const u8, hidden: bool = false };
++
++/// ``hide_unoffered`` (TF_TOOL_CALL_GUARD with tools offered): a well-formed call to a tool the request did not offer
++/// leaves the content; a malformed envelope always stays, so the client and the log can see what the model wrote.
++pub const Options = struct { hide_unoffered: bool = false };
++
+ fn findCI(hay: []const u8, needle: []const u8, from: usize) ?usize {
+     if (from > hay.len) return null;
+     return std.ascii.findIgnoreCasePos(hay, from, needle);
+@@ -102,6 +122,11 @@ pub fn envelopes(a: Allocator, text: []const u8) Allocator.Error![]Envelope {
+ 
+ /// ``parse_tool_calls_from_content``: the reply's content and its calls (null when it makes none).
+ pub fn parse(a: Allocator, text: []const u8, tools: []const Value, max_calls: ?usize) Allocator.Error!Parsed {
++    return parseWith(a, text, tools, max_calls, .{});
++}
++
++/// ``parse`` with its ``Options``.
++pub fn parseWith(a: Allocator, text: []const u8, tools: []const Value, max_calls: ?usize, opts: Options) Allocator.Error!Parsed {
+     if (tools.len == 0) return .{ .content = text, .calls = null };
+     var known: std.StringArrayHashMapUnmanaged([]const u8) = .empty;
+     for (tools) |tool| {
+@@ -119,6 +144,7 @@ pub fn parse(a: Allocator, text: []const u8, tools: []const Value, max_calls: ?u
+     var rejected: usize = 0;
+     var kept_unoffered: usize = 0;
+     var kept_malformed: usize = 0;
++    var rejections: std.ArrayList(Rejection) = .empty;
+     for (envs) |env| {
+         try residue.appendSlice(a, text[cursor..env.start]);
+         cursor = env.end;
+@@ -145,18 +171,27 @@ pub fn parse(a: Allocator, text: []const u8, tools: []const Value, max_calls: ?u
+             }
+             break :blk null;
+         };
++        var unoffered_name: []const u8 = "";
+         const reject: enum { none, unoffered, malformed } = blk: {
+             const list = parsed orelse break :blk .malformed;
+             if (list.len == 0) break :blk .malformed;
+             var unoffered = false;
+             for (list) |c| if ((try callName(a, c, &known)) == null) {
+                 unoffered = true;
++                if (unoffered_name.len == 0) unoffered_name = strip(c.name);
+                 try keepName(a, &kept_names, strip(c.name));
+             };
+             break :blk if (unoffered) .unoffered else .none;
+         };
+         if (reject != .none) {
+-            try residue.appendSlice(a, text[env.start..env.end]);
++            const hide = opts.hide_unoffered and reject == .unoffered;
++            if (!hide) try residue.appendSlice(a, text[env.start..env.end]);
++            try rejections.append(a, .{
++                .reason = if (reject == .unoffered) .unknown_tool_name else .malformed,
++                .name = if (reject == .unoffered) unoffered_name else leadName(env.payload),
++                .envelope = text[env.start..env.end],
++                .hidden = hide,
++            });
+             rejected += 1;
+             if (reject == .unoffered) kept_unoffered += 1 else kept_malformed += 1;
+             continue;
+@@ -173,9 +208,17 @@ pub fn parse(a: Allocator, text: []const u8, tools: []const Value, max_calls: ?u
+         .kept_unoffered = kept_unoffered,
+         .kept_malformed = kept_malformed,
+         .unoffered_names = kept_names.items,
++        .rejections = rejections.items,
+     };
+ }
+ 
++/// The one-line name a GLM payload starts with (``NAME<arg_key>...``), or "" when it starts with none.
++pub fn leadName(block: []const u8) []const u8 {
++    const cut = std.mem.indexOfAny(u8, block, "<{[\n\r") orelse block.len;
++    const name = strip(block[0..cut]);
++    return if (name.len <= 64) name else "";
++}
++
+ /// Keeps one unoffered name as the model wrote it: once, eight names at most, 64 UTF-8 bytes each.
+ fn keepName(a: Allocator, names: *std.ArrayList([]const u8), raw: []const u8) Allocator.Error!void {
+     var end = @min(raw.len, 64);
+diff --git a/zig/src/server/tool_policy.zig b/zig/src/server/tool_policy.zig
+index cc1e872d9..507bed971 100644
+--- a/zig/src/server/tool_policy.zig
++++ b/zig/src/server/tool_policy.zig
+@@ -26,6 +26,7 @@ pub const TextFilter = struct {
+     hidden_from: usize = 0,
+     hid: bool = false, // an envelope was hidden (TF_TOOL_CALL_GUARD logs it)
+     deferred: bool = false, // a closed envelope was hidden: later prose waits for the reply's final content
++    defer_after_close: bool = true,
+     code: reply_code.Scanner = .{},
+ 
+     pub fn feed(f: *TextFilter, a: Allocator, text: []const u8) Allocator.Error![]const u8 {
+@@ -41,11 +42,12 @@ pub const TextFilter = struct {
+     }
+ 
+     fn step(f: *TextFilter, finished: bool) []const u8 {
+-        const b = f.buf.items;
++        var b = f.buf.items;
+         const emit_start = f.sent;
+         if (f.hidden) |tag| {
+             f.matchCloser(b, tag);
+-            return b[emit_start..f.sent];
++            if (f.hidden != null or f.deferred) return f.buf.items[emit_start..f.sent];
++            b = f.buf.items;
+         }
+         while (std.mem.indexOfScalarPos(u8, b, f.scan, '<')) |start| {
+             switch (f.code.check(b, start, finished)) {
+@@ -84,7 +86,9 @@ pub const TextFilter = struct {
+                 f.hid = true;
+                 f.hidden_from = start + end + 1;
+                 f.matchCloser(b, f.hidden.?);
+-                return b[emit_start..f.sent];
++                if (f.hidden != null or f.deferred) return f.buf.items[emit_start..f.sent];
++                b = f.buf.items;
++                continue;
+             }
+             f.sent = start + 1;
+             f.scan = start + 1;
+@@ -104,7 +108,16 @@ pub const TextFilter = struct {
+             }
+             if (b[i + 1] == '/' and std.ascii.eqlIgnoreCase(b[i + 2 .. i + 2 + name.len], name) and b[i + 2 + name.len] == '>') {
+                 f.hidden = null;
+-                f.deferred = true;
++                if (f.defer_after_close) {
++                    f.deferred = true;
++                } else {
++                    const close_end = i + 3 + name.len;
++                    const rest = f.buf.items[close_end..];
++                    std.mem.copyForwards(u8, f.buf.items[f.sent..][0..rest.len], rest);
++                    f.buf.items.len = f.sent + rest.len;
++                    f.scan = f.sent;
++                    f.code.jumpTo(f.sent);
++                }
+                 return;
+             }
+             at = i + 1;
+@@ -131,7 +144,9 @@ pub const Policy = struct {
+ 
+     /// Filters a str delta's text (dict deltas lose tool_calls and filter content), or passes it through.
+     pub fn text(p: *Policy, a: Allocator, s: []const u8) Allocator.Error![]const u8 {
+-        return if (p.filtering()) p.filter.feed(a, s) else s;
++        if (!p.filtering()) return s;
++        if (!p.single) p.filter.defer_after_close = false;
++        return p.filter.feed(a, s);
+     }
+ 
+     pub fn flush(p: *Policy) []const u8 {
+@@ -140,7 +155,7 @@ pub const Policy = struct {
+ 
+     pub fn content(p: *const Policy, a: Allocator, s: []const u8) Allocator.Error![]const u8 {
+         if (!p.filtering()) return s;
+-        var f: TextFilter = .{};
++        var f: TextFilter = .{ .defer_after_close = p.single };
+         const head = try f.feed(a, s);
+         return std.mem.concat(a, u8, &.{ head, f.finish() });
+     }
+@@ -172,7 +187,7 @@ pub const Policy = struct {
+ 
+ /// ``s`` without its call envelopes (whole ones, and an unclosed one to the end).
+ pub fn hideCalls(a: Allocator, s: []const u8) Allocator.Error![]const u8 {
+-    var f: TextFilter = .{};
++    var f: TextFilter = .{ .defer_after_close = false };
+     const head = try f.feed(a, s);
+     return std.mem.concat(a, u8, &.{ head, f.finish() });
+ }

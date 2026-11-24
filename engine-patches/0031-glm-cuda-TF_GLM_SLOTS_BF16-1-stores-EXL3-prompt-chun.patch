@@ -1,0 +1,244 @@
+From 7b2cde430b07a3e5ea8c65aa626dcc070b94a354 Mon Sep 17 00:00:00 2001
+From: sfxnz <248329760+sfxnz@users.noreply.github.com>
+Date: Mon, 23 Nov 2026 14:19:48 +0000
+Subject: [PATCH 31/39] glm cuda: TF_GLM_SLOTS_BF16=1 stores EXL3 prompt chunk
+ MoE slot rows in bf16 (vectorized uint2 store, lossy)
+
+---
+ zig/kernels/cuda/exl3_experts.cu       | 30 +++++++++++++++++---------
+ zig/src/cuda/exl3_prompt.zig           |  6 +++++-
+ zig/src/families/glm/cuda_env_test.zig |  1 +
+ zig/src/families/glm/cuda_exl3.zig     | 14 +++++++++++-
+ zig/src/families/glm/cuda_forward.zig  |  5 ++++-
+ zig/src/families/glm/cuda_moe.zig      | 13 +++++++++--
+ zig/src/platform/environment.zig       |  1 +
+ 7 files changed, 55 insertions(+), 15 deletions(-)
+
+diff --git a/zig/kernels/cuda/exl3_experts.cu b/zig/kernels/cuda/exl3_experts.cu
+index a840aea25..4e9b9f3e7 100644
+--- a/zig/kernels/cuda/exl3_experts.cu
++++ b/zig/kernels/cuda/exl3_experts.cu
+@@ -333,10 +333,11 @@ extern "C" __global__ void __launch_bounds__(256, 2) tf_exl3_prompt_gu_k6(const
+     if (threadIdx.x < TPM) rows_sh[threadIdx.x] = (int)threadIdx.x < cnt ? members[first + threadIdx.x] : -1;            \
+     __syncthreads();                                                                                                     \
+     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
+-// Block (256 model-width columns, item): y[row][slot][:] = the down epilogue of the item's pairs (this rank's share).
++// Block (256 model-width columns, item): y[row][slot][:] = the down epilogue of the item's pairs (this rank's share);
++// fp32, or with bf16 (TF_GLM_SLOTS_BF16) the same fp32 values rounded once to bf16.
+ template <int K2, int NBA>
+ __device__ __forceinline__ void prompt_down_n(const half* __restrict__ Xd, const uint64_t* __restrict__ Td, const half* __restrict__ svh_d,
+-        float* __restrict__ y, int K, int D, unsigned char* smem_raw, const int* rows_sh, int cb, int e, int cnt, int warp, int lane) {
++        void* __restrict__ y, int K, int D, int bf16, unsigned char* smem_raw, const int* rows_sh, int cb, int e, int cnt, int warp, int lane) {
+     float acc[TMT][NBA][4];
+     tmain<1, TPM, K2, NBA, 4>(Xd, Xd, Td, Td, rows_sh, e, K, D >> 4, cb, 1, smem_raw, acc);
+     float* Ed = reinterpret_cast<float*>(smem_raw);
+@@ -356,8 +357,17 @@ __device__ __forceinline__ void prompt_down_n(const half* __restrict__ Xd, const
+                 float o[4];
+ #pragma unroll
+                 for (int j = 0; j < 4; ++j) o[j] = v[j] * HAD_SCALE * __half2float(svh_d[(size_t)e * D + n + j]);
+-                // one 16-byte store (y rows and n are 16-byte aligned: Kernels.run checks y)
+-                *reinterpret_cast<float4*>(y + (size_t)p * D + n) = make_float4(o[0], o[1], o[2], o[3]);
++                if (bf16) {
++                    const __nv_bfloat162 o01 = __floats2bfloat162_rn(o[0], o[1]);
++                    const __nv_bfloat162 o23 = __floats2bfloat162_rn(o[2], o[3]);
++                    uint2 packed;
++                    packed.x = *reinterpret_cast<const uint32_t*>(&o01);
++                    packed.y = *reinterpret_cast<const uint32_t*>(&o23);
++                    *reinterpret_cast<uint2*>(reinterpret_cast<__nv_bfloat16*>(y) + (size_t)p * D + n) = packed;
++                } else {
++                    // one 16-byte store (y rows and n are 16-byte aligned: Kernels.run checks y)
++                    *reinterpret_cast<float4*>(reinterpret_cast<float*>(y) + (size_t)p * D + n) = make_float4(o[0], o[1], o[2], o[3]);
++                }
+             }
+         }
+     }
+@@ -365,30 +375,30 @@ __device__ __forceinline__ void prompt_down_n(const half* __restrict__ Xd, const
+ // The item's main loop and epilogue compiled for its 8-member column blocks (exl3_prompt.cuh TF_EXL3_PROMPT_NBA).
+ template <int K2>
+ __device__ __forceinline__ void prompt_down(const half* __restrict__ Xd, const uint64_t* __restrict__ Td, const half* __restrict__ svh_d,
+-        float* __restrict__ y, int K, int D, unsigned char* smem_raw, const int* rows_sh, int cb, int e, int cnt, int warp, int lane) {
+-#define TF_EXL3_PROMPT_DN(NBA) prompt_down_n<K2, NBA>(Xd, Td, svh_d, y, K, D, smem_raw, rows_sh, cb, e, cnt, warp, lane)
++        void* __restrict__ y, int K, int D, int bf16, unsigned char* smem_raw, const int* rows_sh, int cb, int e, int cnt, int warp, int lane) {
++#define TF_EXL3_PROMPT_DN(NBA) prompt_down_n<K2, NBA>(Xd, Td, svh_d, y, K, D, bf16, smem_raw, rows_sh, cb, e, cnt, warp, lane)
+     TF_EXL3_PROMPT_NBA(cnt, TF_EXL3_PROMPT_DN)
+ #undef TF_EXL3_PROMPT_DN
+ }
+ 
+ extern "C" __global__ void __launch_bounds__(256, 2) tf_exl3_prompt_down(const half* __restrict__ Xd, const uint64_t* __restrict__ Td,
+         const int* __restrict__ items, const int* __restrict__ counts, const int* __restrict__ members, const half* __restrict__ svh_d,
+-        float* __restrict__ y, int K, int D, int skip) {
++        void* __restrict__ y, int K, int D, int skip, int bf16) {
+ 
+     __shared__ __align__(16) unsigned char smem_raw[tsmem_bytes<8>()];
+     __shared__ int rows_sh[TPM];
+     TF_EXL3_PROMPT_DOWN_HEAD()
+-    prompt_down<8>(Xd, Td, svh_d, y, K, D, smem_raw, rows_sh, cb, e, cnt, warp, lane);
++    prompt_down<8>(Xd, Td, svh_d, y, K, D, bf16, smem_raw, rows_sh, cb, e, cnt, warp, lane);
+ }
+ 
+ // The same at 3 bits (3-bit mcg down), the arguments tf_exl3_prompt_down's.
+ extern "C" __global__ void __launch_bounds__(256, 2) tf_exl3_prompt_down_k6(const half* __restrict__ Xd, const uint64_t* __restrict__ Td,
+         const int* __restrict__ items, const int* __restrict__ counts, const int* __restrict__ members, const half* __restrict__ svh_d,
+-        float* __restrict__ y, int K, int D, int skip) {
++        void* __restrict__ y, int K, int D, int skip, int bf16) {
+ 
+     __shared__ __align__(16) unsigned char smem_raw[tsmem_bytes<6>()];
+     __shared__ int rows_sh[TPM];
+     TF_EXL3_PROMPT_DOWN_HEAD()
+-    prompt_down<6>(Xd, Td, svh_d, y, K, D, smem_raw, rows_sh, cb, e, cnt, warp, lane);
++    prompt_down<6>(Xd, Td, svh_d, y, K, D, bf16, smem_raw, rows_sh, cb, e, cnt, warp, lane);
+ }
+ #undef TF_EXL3_PROMPT_DOWN_HEAD
+diff --git a/zig/src/cuda/exl3_prompt.zig b/zig/src/cuda/exl3_prompt.zig
+index aabf4fbda..2b76fc518 100644
+--- a/zig/src/cuda/exl3_prompt.zig
++++ b/zig/src/cuda/exl3_prompt.zig
+@@ -78,6 +78,10 @@ pub const Kernels = struct {
+     }
+     /// `skip` is the shared expert's id, equal to the routed count; its output slot stays owned by the caller.
+     pub fn run(k: Kernels, e: *const ex.Experts, router: grouped.Router, s: Stream, l: ex.Layer, x: u64, stride: usize, picks: u64, rows: usize, sc: Scratch, p: grouped.Plan, y: u64, skip: ?usize) !void {
++        return k.runFormat(e, router, s, l, x, stride, picks, rows, sc, p, y, skip, false);
++    }
++    /// `y`'s slot rows are fp32, or with `bf16` the same values rounded once to bf16 (GLM's TF_GLM_SLOTS_BF16).
++    pub fn runFormat(k: Kernels, e: *const ex.Experts, router: grouped.Router, s: Stream, l: ex.Layer, x: u64, stride: usize, picks: u64, rows: usize, sc: Scratch, p: grouped.Plan, y: u64, skip: ?usize, bf16: bool) !void {
+         if (!eligible(l) or rows == 0 or rows > sc.rows or stride < l.dims or stride > std.math.maxInt(i32)) return error.Exl3Shape;
+         if (y % 16 != 0 or sc.xd % 8 != 0) return error.Exl3Shape; // the kernels' vector stores: 16-byte y, 8-byte xd rows
+         _ = try bytes(l, rows, sc.slots);
+@@ -96,7 +100,7 @@ pub const Kernels = struct {
+         }
+         const items = grouped.maxItems(pairs, count, tile);
+         try go(if (w.gu == 6) k.gateup_k6 else k.gateup, s, .{ l.width / 128, items, 1 }, 256, .{ sc.xg, sc.xu, l.gate, l.up, p.items, p.counts, p.members, l.svh_g, l.svh_u, l.suh_d, sc.xd, i(l.dims), i(l.width), i(if (l.shared_input) sc.slots else 1), l.limit, l.act_mode, skip_id });
+-        try go(if (w.d == 6) k.down_k6 else k.down, s, .{ l.dims / 256, items, 1 }, 256, .{ sc.xd, l.down, p.items, p.counts, p.members, l.svh_d, y, i(l.width), i(l.dims), skip_id });
++        try go(if (w.d == 6) k.down_k6 else k.down, s, .{ l.dims / 256, items, 1 }, 256, .{ sc.xd, l.down, p.items, p.counts, p.members, l.svh_d, y, i(l.width), i(l.dims), skip_id, @as(i32, @intFromBool(bf16)) });
+     }
+ };
+ 
+diff --git a/zig/src/families/glm/cuda_env_test.zig b/zig/src/families/glm/cuda_env_test.zig
+index abb236342..1a42dec8a 100644
+--- a/zig/src/families/glm/cuda_env_test.zig
++++ b/zig/src/families/glm/cuda_env_test.zig
+@@ -18,6 +18,7 @@ const switches = [_]Name{
+     .{ .name = "TF_GLM_DSEL", .default = true },
+     .{ .name = "TF_GLM_DSCORES", .default = true },
+     .{ .name = "TF_GLM_MOE_DIRECT" },
++    .{ .name = "TF_GLM_SLOTS_BF16" },
+ };
+ const counts = [_][:0]const u8{"TF_GLM_DFLASH2_LOG"};
+ const reals = [_][:0]const u8{"TF_GLM_DRAFT_CONFIDENCE"};
+diff --git a/zig/src/families/glm/cuda_exl3.zig b/zig/src/families/glm/cuda_exl3.zig
+index e3577be13..5e425de2d 100644
+--- a/zig/src/families/glm/cuda_exl3.zig
++++ b/zig/src/families/glm/cuda_exl3.zig
+@@ -281,17 +281,29 @@ fn copyRows(stream: cuda.Stream, dst: u64, dpitch: usize, src: u64, spitch: usiz
+     const m: cuda.abi.Memcpy2D = .{ .src = src, .src_pitch = spitch, .dst = dst, .dst_pitch = dpitch, .width = width, .height = height };
+     try stream.d.check(stream.d.api.cuMemcpy2DAsync_v2(&m, stream.handle), what);
+ }
++/// Whether `run` takes the prompt experts (and so can write bf16 slot rows, TF_GLM_SLOTS_BF16).
++pub fn promptPath(w: Experts, count: usize, dims: usize, width: usize, limit: f32, prompt: bool) bool {
++    return prompt and dims % 256 == 0 and width % 128 == 0 and common.prompt.eligible(layer(w, count, dims, width, limit));
++}
++
+ pub fn run(k: *const Kernels, ek: *const experts.Kernels, stream: cuda.Stream, w: Experts, sc: Scratch, plan_buf: cuda.grouped.Plan, x: u64, x_stride: usize, picks: u64, slots: usize, rows: usize, count: usize, dims: usize, width: usize, limit: f32, prompt: bool, ey: u64, xd: u64) !void {
++    return runFormat(k, ek, stream, w, sc, plan_buf, x, x_stride, picks, slots, rows, count, dims, width, limit, prompt, ey, xd, false);
++}
++
++/// `bf16_slots`: the slot rows `ey` are bf16 (prompt experts only: promptPath), else fp32.
++pub fn runFormat(k: *const Kernels, ek: *const experts.Kernels, stream: cuda.Stream, w: Experts, sc: Scratch, plan_buf: cuda.grouped.Plan, x: u64, x_stride: usize, picks: u64, slots: usize, rows: usize, count: usize, dims: usize, width: usize, limit: f32, prompt: bool, ey: u64, xd: u64, bf16_slots: bool) !void {
+     _ = xd;
+     if (slots != top_k + 1) return error.UnsupportedTopK;
+     if (dims % 256 != 0 or width % 128 != 0) return error.UnreadableExl3;
+     const l = layer(w, count, dims, width, limit);
++    if (bf16_slots and !promptPath(w, count, dims, width, limit, prompt)) return error.Exl3Shape;
++    const eb: usize = if (bf16_slots) 2 else 4;
+     if (prompt and common.prompt.eligible(l)) {
+         const scratch = try common.prompt.scratch(sc.picks, l, @min(rows, prompt_rows), slots);
+         var at: usize = 0;
+         while (at < rows) : (at += prompt_rows) {
+             const n: usize = @min(prompt_rows, rows - at);
+-            try k.prompt.run(k, ek.router, stream, l, x + at * x_stride * 2, x_stride, picks + at * slots * 4, n, scratch, plan_buf, ey + at * slots * dims * 4, count);
++            try k.prompt.runFormat(k, ek.router, stream, l, x + at * x_stride * 2, x_stride, picks + at * slots * 4, n, scratch, plan_buf, ey + at * slots * dims * eb, count, bf16_slots);
+         }
+         return;
+     }
+diff --git a/zig/src/families/glm/cuda_forward.zig b/zig/src/families/glm/cuda_forward.zig
+index 625924b2a..b7f22c9cf 100644
+--- a/zig/src/families/glm/cuda_forward.zig
++++ b/zig/src/families/glm/cuda_forward.zig
+@@ -49,6 +49,7 @@ pub const Modules = struct {
+     dsel: bool, // TF_GLM_DSEL (default on): a decode window's DSA select on many CTAs (cuda_sparse.decodeSelect)
+     dscore: ?index_mod.Kernels, // TF_GLM_DSCORES (default on): a decode window's index scores on glm_index_scores
+     moe_direct: bool, // TF_GLM_MOE_DIRECT (default off): a decode window's EXL3 MoE without row copies (cuda_moe.direct)
++    slots_bf16: bool, // TF_GLM_SLOTS_BF16 (default off, lossy): EXL3 prompt chunks' MoE slot rows in bf16
+     tiled: bool = false, // eligible bf16 linears are tiled; KDA inputs with uneven strides retain their row-major path
+     packs: ?*const mm_mod.Packed = null, // the linears packed to 4, 6 or 8 bits (TF_GLM_DENSE_BITS, _HEAD_BITS)
+     copy_rows: cuda.Function,
+@@ -104,6 +105,8 @@ pub const Modules = struct {
+         } else std.log.warn("TF_GLM_DSCORES=0: a decode window's index scores keep tf_glm_scores", .{});
+         m.moe_direct = try @import("sys").environment.read(bool, "TF_GLM_MOE_DIRECT", false);
+         if (m.moe_direct) std.log.info("TF_GLM_MOE_DIRECT=1: a decode window's EXL3 experts read flat picks, one slot sum", .{});
++        m.slots_bf16 = try @import("sys").environment.read(bool, "TF_GLM_SLOTS_BF16", false);
++        if (m.slots_bf16) std.log.warn("TF_GLM_SLOTS_BF16=1: EXL3 prompt chunks' MoE slot rows are bf16 (labelled lossy)", .{});
+         m.tiled = false;
+         m.packs = null; // `m` starts undefined: the field default does not apply
+         return m;
+@@ -273,7 +276,7 @@ pub const Forward = struct {
+     }
+ 
+     fn moeKernels(f: *const Forward) moe.Kernels {
+-        return .{ .set = f.set(), .experts = &f.m.experts, .exl3 = &f.m.exl3, .put_slot = f.m.put_slot, .prof = f.prof, .direct = f.m.moe_direct };
++        return .{ .set = f.set(), .experts = &f.m.experts, .exl3 = &f.m.exl3, .put_slot = f.m.put_slot, .prof = f.prof, .direct = f.m.moe_direct, .slots_bf16 = f.m.slots_bf16 };
+     }
+ 
+     pub const Site = enum { mixer, ffn };
+diff --git a/zig/src/families/glm/cuda_moe.zig b/zig/src/families/glm/cuda_moe.zig
+index be647c555..a50b25477 100644
+--- a/zig/src/families/glm/cuda_moe.zig
++++ b/zig/src/families/glm/cuda_moe.zig
+@@ -49,8 +49,17 @@ pub const Kernels = struct {
+     put_slot: cuda.Function,
+     prof: ?*prof_mod.Prof = null,
+     direct: bool = false, // TF_GLM_MOE_DIRECT=1 (opt-in): see `direct`
++    slots_bf16: bool = false, // TF_GLM_SLOTS_BF16=1 (opt-in, lossy): EXL3 prompt chunk slot rows in bf16
+ };
+ 
++/// A block's slot rows are bf16: an NVFP4 prompt chunk's always; an EXL3 one's under TF_GLM_SLOTS_BF16 (labelled lossy:
++/// each expert's output rounded to bf16 before the weighted sum); else fp32. body and fill must agree.
++fn bf16Slots(k: Kernels, l: Layer, prompt: bool) bool {
++    if (!prompt) return false;
++    const w = l.exl3 orelse return true;
++    return k.slots_bf16 and exl3.promptPath(w, l.count, l.routed.dims, l.routed.width, l.routed.limit, prompt);
++}
++
+ /// TF_GLM_MOE_DIRECT=1: a decode window's EXL3 experts on flat picks, their slot rows summed in place (no copies).
+ fn direct(k: Kernels, l: Layer, rows: usize, prompt: bool) bool {
+     return k.direct and !prompt and l.exl3 != null and l.top_k == exl3.top_k and rows <= exl3.chunk_rows;
+@@ -77,7 +86,7 @@ pub fn body(k: Kernels, stream: cuda.Stream, l: Layer, s: Scratch, x: u64, x_str
+     if (k.prof) |p| p.mark(stream, .router);
+     defer if (k.prof) |p| p.mark(stream, .routed);
+     if (flat) return exl3.runDirect(k.exl3, stream, l.exl3.?, s.x3, x, x_stride, rows, l.count, d, l.routed.width, l.routed.limit);
+-    if (l.exl3) |w| return exl3.run(k.exl3, k.experts, stream, w, s.x3, s.plan, x, x_stride, s.pick, slots, rows, l.count, d, l.routed.width, l.routed.limit, prompt, s.ey, s.eact);
++    if (l.exl3) |w| return exl3.runFormat(k.exl3, k.experts, stream, w, s.x3, s.plan, x, x_stride, s.pick, slots, rows, l.count, d, l.routed.width, l.routed.limit, prompt, s.ey, s.eact, bf16Slots(k, l, prompt));
+     const plan: experts.Plan = .{ .route = s.plan, .slots = slots, .experts = l.count + 1, .prompt = prompt, .fact = !prompt and k.experts.fact and l.routed.format == .nvfp4 };
+     try experts.route(k.experts, stream, s.pick, rows * slots, plan);
+     try experts.run(k.experts, stream, .gate_up, l.routed, plan, x, x_stride, rows, s.eact, shared_id);
+@@ -91,7 +100,7 @@ pub fn fill(k: Kernels, stream: cuda.Stream, l: Layer, s: Scratch, x: u64, x_str
+     const d = l.routed.dims;
+     const slots = l.top_k + 1;
+     const n = hi - lo;
+-    const bf16_slots = prompt and l.exl3 == null; // the slot rows: bf16 in an NVFP4 prompt chunk, else fp32
++    const bf16_slots = bf16Slots(k, l, prompt); // the slot rows: bf16 in an NVFP4 prompt chunk (EXL3: TF_GLM_SLOTS_BF16), else fp32
+     const eb: usize = if (bf16_slots) 2 else 4;
+     try projection.matmul(k.set, stream, l.shared_gu, x + lo * x_stride * 2, x_stride, s.sgu + lo * 2 * l.shared * 2, s.mm_part, n, 2 * l.shared, d, false);
+     try glue.swiglu(k.set, stream, s.sgu + lo * 2 * l.shared * 2, s.sact + lo * l.shared * 2, s.sxs + lo * (l.shared / 64) * 4, l.routed.limit, n, l.shared);
+diff --git a/zig/src/platform/environment.zig b/zig/src/platform/environment.zig
+index c34292e8f..34474ba84 100644
+--- a/zig/src/platform/environment.zig
++++ b/zig/src/platform/environment.zig
+@@ -115,6 +115,7 @@ pub const rules = [_]Rule{
+     .{ .name = "TF_GLM_DSEL", .scope = .glm, .kind = .flag, .forms = "0 or 1" },
+     .{ .name = "TF_GLM_DSCORES", .scope = .glm, .kind = .flag, .forms = "0 or 1" },
+     .{ .name = "TF_GLM_MOE_DIRECT", .scope = .glm, .kind = .flag, .forms = "0 or 1" },
++    .{ .name = "TF_GLM_SLOTS_BF16", .scope = .glm, .kind = .flag, .forms = "0 or 1" },
+     .{ .name = "TF_GLM_DFLASH2_LOG", .scope = .glm, .kind = .u64, .forms = "a whole unsigned 64-bit round count (0 logs no drafts)" },
+     .{ .name = "TF_GLM_DRAFT_CONFIDENCE", .scope = .glm, .kind = .real, .max = 1, .forms = "a finite chain-chance cut from 0 to 1 (default 0.7)" },
+     // 2^31 - 32: GLM's slots, the window and its 32 verify rows (glm/cuda_native.zig's capacity), keep i32 positions

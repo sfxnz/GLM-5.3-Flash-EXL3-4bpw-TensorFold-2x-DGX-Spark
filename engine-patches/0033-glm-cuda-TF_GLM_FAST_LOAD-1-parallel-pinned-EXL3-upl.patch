@@ -1,0 +1,440 @@
+From 984e5f4bff8ce4165a5c8940c0ef02078df9d3b2 Mon Sep 17 00:00:00 2001
+From: sfxnz <248329760+sfxnz@users.noreply.github.com>
+Date: Mon, 23 Nov 2026 14:24:27 +0000
+Subject: [PATCH 33/39] glm cuda: TF_GLM_FAST_LOAD=1 parallel pinned EXL3
+ upload, rank-filtered prefetch, and GPU dense qtile4/6/8
+
+---
+ zig/kernels/cuda/glm_mm.cu                  |  45 +++++++++
+ zig/src/families/glm/cuda_env_test.zig      |   1 +
+ zig/src/families/glm/cuda_exl3.zig          | 106 +++++++++++++++++++-
+ zig/src/families/glm/cuda_load_ahead.zig    |  10 +-
+ zig/src/families/glm/cuda_load_prefetch.zig |  50 +++++++++
+ zig/src/families/glm/cuda_mm.zig            |  18 +++-
+ zig/src/families/glm/cuda_tile.zig          |  30 +++++-
+ zig/src/platform/environment.zig            |   1 +
+ 8 files changed, 254 insertions(+), 7 deletions(-)
+
+diff --git a/zig/kernels/cuda/glm_mm.cu b/zig/kernels/cuda/glm_mm.cu
+index f6e1821c9..ce6511d59 100644
+--- a/zig/kernels/cuda/glm_mm.cu
++++ b/zig/kernels/cuda/glm_mm.cu
+@@ -383,6 +383,51 @@ extern "C" __global__ void glm_mm_tile8(const uint32_t* src, const __half* ss, u
+     tile_packed<8>(src, ss, dst, ds, N, K);
+ }
+ 
++// -- quantize + tile on GPU (TF_GLM_FAST_LOAD): bf16 rows [N][K] -> symmetric BITS-bit tiled chunks + fp16 scales --
++// Bit-identical to cuda_qpack.quantize + tile_packed<BITS>: lanes (lane & 3 == 0..3) partition row n's 64-element group.
++template <int BITS>
++__device__ __forceinline__ void qtile_bf16(const __nv_bfloat16* __restrict__ src,
++                                           uint32_t* __restrict__ dst, __half* __restrict__ ds, int N, int K) {
++    constexpr int WPC = BITS / 2;
++    constexpr int HALF = 1 << (BITS - 1);
++    constexpr float QMAX = (float)(HALF - 1);
++    const int KG = K >> 6, N8 = N >> 3;
++    const long long c = (long long)blockIdx.x * blockDim.x + threadIdx.x;
++    if (c >= (long long)N8 * KG * 32) return;
++    const int lane = (int)(c & 31);
++    const long long tg = c >> 5;
++    const int g = (int)(tg % KG), tt = (int)(tg / KG);
++    const int n = tt * 8 + (lane >> 2);
++    const __nv_bfloat16* row = src + (long long)n * K + g * 64;
++    float vals[16];
++    float amax = 0.0f;
++#pragma unroll
++    for (int v = 0; v < 16; ++v) {
++        vals[v] = __bfloat162float(row[frag_k(lane, v)]);
++        amax = fmaxf(amax, fabsf(vals[v]));
++    }
++    amax = fmaxf(amax, __shfl_xor_sync(0xffffffffu, amax, 1));
++    amax = fmaxf(amax, __shfl_xor_sync(0xffffffffu, amax, 2));
++    const __half s16 = __float2half_rn(__fdiv_rn(amax, QMAX));
++    const float sc = __half2float(s16);
++    int q[16];
++#pragma unroll
++    for (int v = 0; v < 16; ++v) {
++        if (sc == 0.0f) {
++            q[v] = 0;
++        } else {
++            const float r = rintf(__fdiv_rn(vals[v], sc));
++            q[v] = (int)fmaxf(-QMAX, fminf(QMAX, r));
++        }
++    }
++    pack16<BITS>(q, dst + c * WPC);
++    if ((lane & 3) == 0) ds[(tg * 8) + (lane >> 2)] = s16;
++}
++
++extern "C" __global__ void glm_mm_qtile4(const __nv_bfloat16* src, uint32_t* dst, __half* ds, int N, int K) { qtile_bf16<4>(src, dst, ds, N, K); }
++extern "C" __global__ void glm_mm_qtile6(const __nv_bfloat16* src, uint32_t* dst, __half* ds, int N, int K) { qtile_bf16<6>(src, dst, ds, N, K); }
++extern "C" __global__ void glm_mm_qtile8(const __nv_bfloat16* src, uint32_t* dst, __half* ds, int N, int K) { qtile_bf16<8>(src, dst, ds, N, K); }
++
+ // bf16 rows [N][K] -> the tiled chunks (16 bf16 a chunk, in pair order)
+ extern "C" __global__ void glm_mm_tile16(const __nv_bfloat16* __restrict__ src, __nv_bfloat16* __restrict__ dst, int N, int K) {
+     glm_pdl::enter_weights();
+diff --git a/zig/src/families/glm/cuda_env_test.zig b/zig/src/families/glm/cuda_env_test.zig
+index 6d1ecbf7f..841fa2df6 100644
+--- a/zig/src/families/glm/cuda_env_test.zig
++++ b/zig/src/families/glm/cuda_env_test.zig
+@@ -21,6 +21,7 @@ const switches = [_]Name{
+     .{ .name = "TF_GLM_SLOTS_BF16" },
+     .{ .name = "TF_GLM_DRAFT_ONLY_HEAD" },
+     .{ .name = "TF_GLM_DRAFT_DOWN8" },
++    .{ .name = "TF_GLM_FAST_LOAD" },
+ };
+ const counts = [_][:0]const u8{"TF_GLM_DFLASH2_LOG"};
+ const reals = [_][:0]const u8{"TF_GLM_DRAFT_CONFIDENCE"};
+diff --git a/zig/src/families/glm/cuda_exl3.zig b/zig/src/families/glm/cuda_exl3.zig
+index 5e425de2d..91611165c 100644
+--- a/zig/src/families/glm/cuda_exl3.zig
++++ b/zig/src/families/glm/cuda_exl3.zig
+@@ -110,6 +110,88 @@ pub fn tileBytes(k2: u32) usize {
+     return 16 * @as(usize, k2);
+ }
+ 
++/// TF_GLM_FAST_LOAD (default off): parallel pinned-staged EXL3 upload, rank-filtered prefetch, and GPU dense qtile.
++pub fn fastLoad() !bool {
++    return @import("sys").environment.read(bool, "TF_GLM_FAST_LOAD", false);
++}
++
++const GatherCtx = struct {
++    slices: []const []const u8,
++    dst: []u8,
++    kt: usize,
++    nt: usize,
++    by_cols: bool,
++    m_n: usize,
++    cut_lo: usize,
++    tb: usize,
++    per_expert: usize,
++};
++
++fn gatherRange(ctx: GatherCtx, lo: usize, hi: usize) void {
++    const dst_row = ctx.nt * ctx.tb;
++    const src_row = (ctx.m_n / 16) * ctx.tb;
++    const col_off = (ctx.cut_lo / 16) * ctx.tb;
++    const down_off = (ctx.cut_lo / 16) * ctx.nt * ctx.tb;
++    for (lo..hi) |e| {
++        const src = ctx.slices[e];
++        const out = ctx.dst[e * ctx.per_expert ..][0..ctx.per_expert];
++        if (ctx.by_cols) {
++            for (0..ctx.kt) |r| {
++                @memcpy(out[r * dst_row ..][0..dst_row], src[r * src_row + col_off ..][0..dst_row]);
++            }
++        } else {
++            @memcpy(out[0..ctx.per_expert], src[down_off..][0..ctx.per_expert]);
++        }
++    }
++}
++
++fn uploadTrellisFast(L: anytype, comptime tw: []const u8, i: u32, slices: []const []const u8, kt: usize, nt: usize, by_cols: bool, m_n: usize, cut_lo: usize, tb: usize) !u64 {
++    const count = slices.len;
++    const per_expert = kt * nt * tb;
++    const total = count * per_expert;
++    const dev = try cuda.DeviceBuffer.alloc(L.d, total);
++    const base = try @import("cuda_upload_owner.zig").keep(L, dev, "layers.{d}.moe.exl3." ++ tw, .{i});
++    if (count == 0) return base;
++    const staging_cap = @import("cuda_load_pack.zig").staging_bytes;
++    const piece_experts = @max(@as(usize, 1), @min(count, staging_cap / per_expert));
++    const piece_bytes = piece_experts * per_expert;
++    if (L.staging.buf) |b| if (b.bytes.len < piece_bytes) L.staging.deinit();
++    if (L.staging.buf == null) L.staging.buf = try cuda.HostBuffer.allocMapped(L.d, piece_bytes);
++    const dst_host = L.staging.buf.?.bytes;
++    const dst_dev = try L.staging.buf.?.device();
++    errdefer L.stream.synchronize() catch {};
++    const max_threads: usize = 12;
++    var first: usize = 0;
++    while (first < count) : (first += piece_experts) {
++        const k = @min(piece_experts, count - first);
++        const n = @max(@as(usize, 1), @min(max_threads, k));
++        const ctx: GatherCtx = .{
++            .slices = slices[first..][0..k],
++            .dst = dst_host[0 .. k * per_expert],
++            .kt = kt,
++            .nt = nt,
++            .by_cols = by_cols,
++            .m_n = m_n,
++            .cut_lo = cut_lo,
++            .tb = tb,
++            .per_expert = per_expert,
++        };
++        var spawned: [max_threads]?std.Thread = @splat(null);
++        for (1..n) |t| {
++            const lo = k * t / n;
++            const hi = k * (t + 1) / n;
++            spawned[t] = std.Thread.spawn(.{}, gatherRange, .{ ctx, lo, hi }) catch null;
++        }
++        gatherRange(ctx, 0, k / n);
++        for (spawned[1..n], 1..) |thread, t| {
++            if (thread) |x| x.join() else gatherRange(ctx, k * t / n, k * (t + 1) / n);
++        }
++        try dev.copyFrom(first * per_expert, dst_dev, k * per_expert, L.stream.handle);
++        try L.stream.synchronize();
++    }
++    return base;
++}
++
+ /// The width every entry of `k2s` has, or 0 when they differ (or there are none).
+ fn uniform(k2s: []const i32) u32 {
+     if (k2s.len == 0) return 0;
+@@ -130,11 +212,14 @@ pub fn refusal(t: core.checkpoint.Tensor, k: usize, n: usize) ?[]const u8 {
+ /// Every expert and projection keeps its own width (its trellis's last dimension); the tables hold them by expert.
+ pub fn load(L: anytype, i: u32, count: usize, dims: usize, inter: usize, cut: Span) !Experts {
+     if (dims % 128 != 0 or cut.lo % 128 != 0 or cut.hi % 128 != 0) return error.UnreadableExl3;
++    const fast = try fastLoad();
+     const width = cut.len();
+     var out: Experts = undefined;
+     out.shx = true;
+     const k2s = try L.gpa.alloc(i32, 3 * count); // gate's, up's, down's by expert
+     defer L.gpa.free(k2s);
++    const slices: [][]const u8 = if (fast) try L.gpa.alloc([]const u8, count) else &.{};
++    defer if (fast) L.gpa.free(slices);
+     const Mat = struct { k: usize, n: usize, by_cols: bool };
+     const mats = [_]Mat{
+         .{ .k = dims, .n = inter, .by_cols = true },
+@@ -158,13 +243,30 @@ pub fn load(L: anytype, i: u32, count: usize, dims: usize, inter: usize, cut: Sp
+             if (marker.dtype != .i32 or marker.numel() != 1 or marker.bytes.len != 4 or
+                 std.mem.readInt(u32, marker.bytes[0..4], .little) != core.exl3_load.markers[0].value)
+                 return error.UnreadableExl3;
+-            if (m.by_cols) { // every tile row, the rank's tile columns
++            if (fast) {
++                slices[e] = t.bytes;
++            } else if (m.by_cols) { // every tile row, the rank's tile columns
+                 const row = (m.n / 16) * tile;
+                 for (0..kt) |r| try L.host.appendSlice(L.gpa, t.bytes[r * row + (cut.lo / 16) * tile ..][0 .. nt * tile]);
+             } else try L.host.appendSlice(L.gpa, t.bytes[(cut.lo / 16) * nt * tile ..][0 .. kt * nt * tile]); // its tile rows
+             k2.* = @intCast(h);
+         }
+-        const base = try L.put("layers.{d}.moe.exl3." ++ tw, .{i});
++        const uni = if (fast) uniform(mine) else 0;
++        const base = if (fast and uni != 0)
++            try uploadTrellisFast(L, tw, i, slices, kt, nt, m.by_cols, m.n, cut.lo, tileBytes(uni))
++        else blk: {
++            if (fast) {
++                for (0..count) |e| {
++                    const tile = tileBytes(@intCast(mine[e]));
++                    const src = slices[e];
++                    if (m.by_cols) {
++                        const row = (m.n / 16) * tile;
++                        for (0..kt) |r| try L.host.appendSlice(L.gpa, src[r * row + (cut.lo / 16) * tile ..][0 .. nt * tile]);
++                    } else try L.host.appendSlice(L.gpa, src[(cut.lo / 16) * nt * tile ..][0 .. kt * nt * tile]);
++                }
++            }
++            break :blk try L.put("layers.{d}.moe.exl3." ++ tw, .{i});
++        };
+         var ptr: u64 = base;
+         for (mine) |k2| { // each expert's trellis follows the one before, at its own width
+             try L.host.appendSlice(L.gpa, std.mem.asBytes(&ptr));
+diff --git a/zig/src/families/glm/cuda_load_ahead.zig b/zig/src/families/glm/cuda_load_ahead.zig
+index f777c7e2e..d68e56a43 100644
+--- a/zig/src/families/glm/cuda_load_ahead.zig
++++ b/zig/src/families/glm/cuda_load_ahead.zig
+@@ -14,18 +14,24 @@ pub fn layers(L: anytype, prefix: []const u8, ids: []const u32, out: anytype) !v
+ }
+ 
+ pub fn layersWithCount(L: anytype, ids: []const u32, out: anytype, count: usize) !void {
++    const sys_c = @import("sys").c;
++    var t0: sys_c.timespec = undefined;
++    _ = sys_c.clock_gettime(sys_c.CLOCK.MONOTONIC, &t0);
+     var ahead: u64 = 0;
+     for (ids, out) |i, *l| {
+         if (i >= L.w.config.layers) return error.BadLayer;
+         {
+-            var reading = try @import("cuda_load_prefetch.zig").begin(L.ck, i, count);
++            var reading = try @import("cuda_load_prefetch.zig").beginForRank(L.ck, i, count, L.w.share.moe, L.w.config.moe_inter);
+             defer reading.deinit();
+             l.* = try L.layer(i);
+             ahead += try reading.check();
+         }
+         L.ck.release(); // a rank reads about half the checkpoint: its pages would crowd the GPU's allocations out
+     }
+-    if (count > 0) std.log.info("weights: {d} readers read {d:.1} GiB ahead of the loader", .{ count, @as(f64, @floatFromInt(ahead)) / (1 << 30) });
++    var t1: sys_c.timespec = undefined;
++    _ = sys_c.clock_gettime(sys_c.CLOCK.MONOTONIC, &t1);
++    const dt_s = @as(f64, @floatFromInt(t1.sec - t0.sec)) + @as(f64, @floatFromInt(t1.nsec - t0.nsec)) * 1e-9;
++    std.log.info("weights: {d} layers loaded in {d:.2}s ({d} readers read {d:.1} GiB ahead of the loader)", .{ ids.len, dt_s, count, @as(f64, @floatFromInt(ahead)) / (1 << 30) });
+ }
+ 
+ /// Readers when TF_GLM_LOAD_PREFETCH is unset.
+diff --git a/zig/src/families/glm/cuda_load_prefetch.zig b/zig/src/families/glm/cuda_load_prefetch.zig
+index b6c0ab329..bf3018888 100644
+--- a/zig/src/families/glm/cuda_load_prefetch.zig
++++ b/zig/src/families/glm/cuda_load_prefetch.zig
+@@ -1,8 +1,58 @@
+ //! Read-only layer prefetch through core; uploads and page drops retain their loader's order.
+ const std = @import("std");
+ const core = @import("core");
++const Span = @import("cuda_shard.zig").Span;
++
+ pub fn begin(ck: *const core.Checkpoint, i: usize, count: usize) !core.checkpoint_read_ahead.Scope {
+     if (count == 0) return .{};
+     var buf: [160]u8 = undefined;
+     return core.checkpoint_read_ahead.checkpoint(ck, try std.fmt.bufPrint(&buf, "model.language_model.layers.{d}.", .{i}), count);
+ }
++
++fn lower(_: void, x: [2]u64, y: [2]u64) bool {
++    return x[0] < y[0];
++}
++
++/// Rank-filtered prefetch (TF_GLM_FAST_LOAD): skips the other rank's contiguous half of EXL3 down_proj.trellis.
++pub fn beginForRank(ck: *const core.Checkpoint, i: usize, count: usize, moe_cut: Span, moe_inter: usize) !core.checkpoint_read_ahead.Scope {
++    if (count == 0) return .{};
++    const fast = try @import("cuda_exl3.zig").fastLoad();
++    if (!fast or moe_inter == 0 or (moe_cut.lo == 0 and moe_cut.hi >= moe_inter)) return begin(ck, i, count);
++    var buf: [160]u8 = undefined;
++    const prefix = try std.fmt.bufPrint(&buf, "model.language_model.layers.{d}.", .{i});
++    const gpa = ck.gpa;
++    var out: std.ArrayList(core.checkpoint_read_ahead.Span) = .empty;
++    errdefer out.deinit(gpa);
++    var ranges: std.ArrayList([2]u64) = .empty;
++    defer ranges.deinit(gpa);
++    const chunk = core.checkpoint_read_ahead.chunk;
++    for (ck.files.items) |*f| {
++        if (f.map.section == null) continue;
++        ranges.clearRetainingCapacity();
++        var it = f.names.iterator();
++        while (it.next()) |e| {
++            const name = e.key_ptr.*;
++            if (!std.mem.startsWith(u8, name, prefix)) continue;
++            var lo: u64 = f.data + e.value_ptr.begin;
++            var hi: u64 = f.data + e.value_ptr.end;
++            if (std.mem.endsWith(u8, name, ".down_proj.trellis") and hi > lo) {
++                const len = hi - lo;
++                const sub_lo = len * moe_cut.lo / moe_inter;
++                const sub_hi = len * moe_cut.hi / moe_inter;
++                lo += sub_lo;
++                hi = lo + (sub_hi - sub_lo);
++            }
++            if (hi > lo) try ranges.append(gpa, .{ lo, hi });
++        }
++        std.mem.sort([2]u64, ranges.items, {}, lower);
++        var k: usize = 0;
++        while (k < ranges.items.len) {
++            var lo, var hi = ranges.items[k];
++            k += 1;
++            while (k < ranges.items.len and ranges.items[k][0] <= hi) : (k += 1) hi = @max(hi, ranges.items[k][1]);
++            while (lo < hi) : (lo = @min(lo + chunk, hi)) try out.append(gpa, .{ .path = f.path, .lo = lo, .hi = @min(lo + chunk, hi) });
++        }
++    }
++    const spans = try out.toOwnedSlice(gpa);
++    return .{ .reader = try core.checkpoint_read_ahead.start(gpa, ck.io, spans, count) };
++}
+diff --git a/zig/src/families/glm/cuda_mm.zig b/zig/src/families/glm/cuda_mm.zig
+index 197536c26..9179f6728 100644
+--- a/zig/src/families/glm/cuda_mm.zig
++++ b/zig/src/families/glm/cuda_mm.zig
+@@ -46,11 +46,12 @@ pub const Kernels = struct {
+     reduce: cuda.Function,
+     tile: cuda.Function,
+     tile_packed: [3]cuda.Function, // glm_mm_tile4/6/8: packed rows and their scales into the tiles
++    qtile_packed: [3]cuda.Function, // glm_mm_qtile4/6/8: bf16 rows quantized and tiled on GPU (TF_GLM_FAST_LOAD)
+     prompt_fixed_k: bool = false, // opt-in prompt experiment; never selected from the number of batched rows
+     pdl: bool, // dependent launches: a matmul's weights stream in while the kernel before it finishes
+ 
+     pub fn load(m: cuda.Module) !Kernels {
+-        var k: Kernels = .{ .by_rows = undefined, .packed_rows = undefined, .packed_prompt = undefined, .tile_packed = undefined, .prompt = try m.function("glm_mm16_rows"), .reduce = try m.function("glm_mm_reduce"), .tile = try m.function("glm_mm_tile16"), .pdl = true };
++        var k: Kernels = .{ .by_rows = undefined, .packed_rows = undefined, .packed_prompt = undefined, .tile_packed = undefined, .qtile_packed = undefined, .prompt = try m.function("glm_mm16_rows"), .reduce = try m.function("glm_mm_reduce"), .tile = try m.function("glm_mm_tile16"), .pdl = true };
+         inline for (.{ "glm_mm16_16", "glm_mm16_32", "glm_mm16_64", "glm_mm16_128" }, 0..) |name, i| {
+             k.by_rows[i] = try m.function(name);
+             try k.by_rows[i].allowDynamicShared(smem(bucket(i)));
+@@ -61,6 +62,7 @@ pub const Kernels = struct {
+                 try k.packed_rows[wi][i].allowDynamicShared(sharedBytes(b, bm));
+             }
+             k.tile_packed[wi] = try m.function(std.fmt.comptimePrint("glm_mm_tile{d}", .{b}));
++            k.qtile_packed[wi] = try m.function(std.fmt.comptimePrint("glm_mm_qtile{d}", .{b}));
+             k.packed_prompt[wi] = try m.function(std.fmt.comptimePrint("glm_mm{d}_128s2", .{b}));
+             try k.packed_prompt[wi].allowDynamicShared(sharedBytesStages(b, 128, 2));
+         }
+@@ -168,6 +170,20 @@ pub fn tilePacked(k: *const Kernels, s: cuda.Stream, bits: u8, src: u64, ss: u64
+     try cuda.launch.launch(k.tile_packed[wi - 1], .{ .grid = .{ .x = @intCast((chunks + 255) / 256) }, .block = .{ .x = 256 }, .pdl = k.pdl }, s, &a);
+ }
+ 
++/// A row-major bf16 [n][k] linear at `src` quantized to `bits` and tiled on GPU into `dst` + `ds` (TF_GLM_FAST_LOAD).
++pub fn qtile(k: *const Kernels, s: cuda.Stream, bits: u8, src: u64, dst: u64, ds: u64, n: usize, kk: usize) !void {
++    const wi = try widthIndex(bits);
++    if (wi == 0) return error.BadBits;
++    const chunks = n / 8 * (kk / 64) * 32;
++    var a: cuda.Args = .{};
++    a.add(src);
++    a.add(dst);
++    a.add(ds);
++    a.add(@as(c_int, @intCast(n)));
++    a.add(@as(c_int, @intCast(kk)));
++    try cuda.launch.launch(k.qtile_packed[wi - 1], .{ .grid = .{ .x = @intCast((chunks + 255) / 256) }, .block = .{ .x = 256 } }, s, &a);
++}
++
+ /// A row-major bf16 [n][k] linear at `src` tiled into `dst` (as many bytes).
+ pub fn tile(k: *const Kernels, s: cuda.Stream, src: u64, dst: u64, n: usize, kk: usize) !void {
+     const chunks = n / 8 * (kk / 64) * 32;
+diff --git a/zig/src/families/glm/cuda_tile.zig b/zig/src/families/glm/cuda_tile.zig
+index 592a24dd2..a5b717868 100644
+--- a/zig/src/families/glm/cuda_tile.zig
++++ b/zig/src/families/glm/cuda_tile.zig
+@@ -141,6 +141,10 @@ fn compact(w: *Weights, d: *const cuda.Driver, s: cuda.Stream, field: *u64, byte
+ 
+ /// Eligible linears tiled in place; uneven KDA inputs and their views stay bf16 for the row-major kernels.
+ pub fn tileLinears(gpa: std.mem.Allocator, w: *Weights, mk: *const mm_mod.Kernels, s: cuda.Stream, d: *const cuda.Driver, dense_bits: u8, head_bits: u8) !mm_mod.Packed {
++    const fast = try @import("cuda_exl3.zig").fastLoad();
++    const sys_c = @import("sys").c;
++    var t0: sys_c.timespec = undefined;
++    _ = sys_c.clock_gettime(sys_c.CLOCK.MONOTONIC, &t0);
+     try padKdaInputs(w, d, s); // pad_to was set at load (Engine.open), so a stack pads only with TF_GLM_KDA_PAD=1
+     var list: std.ArrayList(Lin) = .empty;
+     defer list.deinit(w.gpa);
+@@ -171,13 +175,32 @@ pub fn tileLinears(gpa: std.mem.Allocator, w: *Weights, mk: *const mm_mod.Kernel
+             try d.check(d.api.cuMemcpyDtoDAsync_v2(ptr, tmp.ptr, n * k * 2, s.handle), "cuMemcpyDtoDAsync");
+             continue;
+         }
++        const sizes = mm_mod.packedBytes(n, k, bits); // codes then scales, inside the bf16 tiles' bytes
++        if (fast) {
++            if (bufferAt(w, ptr)) |at| {
++                const was = w.buffers.items[at].len;
++                var nb = try cuda.DeviceBuffer.alloc(d, sizes[0] + sizes[1]);
++                errdefer nb.free();
++                try mm_mod.qtile(mk, s, bits, ptr, nb.ptr, nb.ptr + sizes[0], n, k);
++                try s.synchronize();
++                replace(w, at, nb);
++                e.field.* = nb.ptr;
++                freed += was -| nb.len;
++            } else {
++                try mm_mod.qtile(mk, s, bits, ptr, tmp.ptr, tmp.ptr + sizes[0], n, k);
++                try d.check(d.api.cuMemcpyDtoDAsync_v2(ptr, tmp.ptr, sizes[0] + sizes[1], s.handle), "cuMemcpyDtoDAsync");
++                try s.synchronize();
++            }
++            try packed_ptrs.append(gpa, e.field.*);
++            try packed_bits.append(gpa, bits);
++            continue;
++        }
+         try host.resize(gpa, n * k);
+         try s.synchronize();
+         try cuda.memory.download(d, ptr, std.mem.sliceAsBytes(host.items)[0 .. n * k * 2]);
+         try words.resize(gpa, n * k * bits / 32);
+         try scales.resize(gpa, n * (k / 64));
+         qpack.quantize(bits, host.items, n, k, words.items, scales.items);
+-        const sizes = mm_mod.packedBytes(n, k, bits); // codes then scales, inside the bf16 tiles' bytes
+         try tmp.upload(0, std.mem.sliceAsBytes(words.items));
+         try tmp.upload(sizes[0], std.mem.sliceAsBytes(scales.items));
+         try mm_mod.tilePacked(mk, s, bits, tmp.ptr, tmp.ptr + sizes[0], ptr, ptr + sizes[0], n, k);
+@@ -187,7 +210,10 @@ pub fn tileLinears(gpa: std.mem.Allocator, w: *Weights, mk: *const mm_mod.Kernel
+         try packed_bits.append(gpa, bits);
+     }
+     try s.synchronize();
+-    if (packed_ptrs.items.len > 0) std.log.info("glm: {d} linears packed ({d}/{d} bits), {d:.2} GiB freed", .{ packed_ptrs.items.len, dense_bits, head_bits, @as(f64, @floatFromInt(freed)) / (1 << 30) });
++    var t1: sys_c.timespec = undefined;
++    _ = sys_c.clock_gettime(sys_c.CLOCK.MONOTONIC, &t1);
++    const dt_s = @as(f64, @floatFromInt(t1.sec - t0.sec)) + @as(f64, @floatFromInt(t1.nsec - t0.nsec)) * 1e-9;
++    if (packed_ptrs.items.len > 0) std.log.info("glm: {d} linears packed ({d}/{d} bits{s}), {d:.2} GiB freed in {d:.2}s", .{ packed_ptrs.items.len, dense_bits, head_bits, if (fast) ", gpu qtile" else "", @as(f64, @floatFromInt(freed)) / (1 << 30), dt_s });
+     // sorted by pointer, the bits beside them (Packed.tiled searches)
+     const ptrs = try packed_ptrs.toOwnedSlice(gpa);
+     errdefer gpa.free(ptrs);
+diff --git a/zig/src/platform/environment.zig b/zig/src/platform/environment.zig
+index 0eb8166d7..23c5d4d2f 100644
+--- a/zig/src/platform/environment.zig
++++ b/zig/src/platform/environment.zig
+@@ -118,6 +118,7 @@ pub const rules = [_]Rule{
+     .{ .name = "TF_GLM_SLOTS_BF16", .scope = .glm, .kind = .flag, .forms = "0 or 1" },
+     .{ .name = "TF_GLM_DRAFT_ONLY_HEAD", .scope = .glm, .kind = .flag, .forms = "0 or 1" },
+     .{ .name = "TF_GLM_DRAFT_DOWN8", .scope = .glm, .kind = .flag, .forms = "0 or 1" },
++    .{ .name = "TF_GLM_FAST_LOAD", .scope = .glm, .kind = .flag, .forms = "0 or 1" },
+     .{ .name = "TF_GLM_DFLASH2_LOG", .scope = .glm, .kind = .u64, .forms = "a whole unsigned 64-bit round count (0 logs no drafts)" },
+     .{ .name = "TF_GLM_DRAFT_CONFIDENCE", .scope = .glm, .kind = .real, .max = 1, .forms = "a finite chain-chance cut from 0 to 1 (default 0.7)" },
+     // 2^31 - 32: GLM's slots, the window and its 32 verify rows (glm/cuda_native.zig's capacity), keep i32 positions

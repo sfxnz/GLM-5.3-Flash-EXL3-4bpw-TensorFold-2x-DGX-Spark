@@ -1,0 +1,310 @@
+From ea92846e55b9d7df32e07f17a7ed66d7e060182e Mon Sep 17 00:00:00 2001
+From: MiaAI_Lab <mia.ailab1@gmail.com>
+Date: Fri, 20 Nov 2026 01:42:37 +0200
+Subject: [PATCH 10/39] server: TF_TOOL_CALL_GUARD=1, an opt-in guard against
+ tool-call markup
+
+---
+ zig/src/server/openai.zig       | 16 +++++-
+ zig/src/server/openai_calls.zig | 18 +++++--
+ zig/src/server/tool_guard.zig   | 90 +++++++++++++++++++++++++++++++++
+ zig/src/server/tool_policy.zig  | 28 +++++++---
+ zig/src/server/tool_stream.zig  |  1 +
+ 5 files changed, 143 insertions(+), 10 deletions(-)
+ create mode 100644 zig/src/server/tool_guard.zig
+
+diff --git a/zig/src/server/openai.zig b/zig/src/server/openai.zig
+index 3b2347882..631545faa 100644
+--- a/zig/src/server/openai.zig
++++ b/zig/src/server/openai.zig
+@@ -10,6 +10,7 @@ const messages = @import("messages.zig");
+ const tool_specs = @import("tool_specs.zig");
+ const tool_parse = @import("tool_parse.zig");
+ const tool_stream = @import("tool_stream.zig");
++const tool_guard = @import("tool_guard.zig");
+ const token_stream = @import("token_stream.zig");
+ const ids = @import("ids.zig");
+ const log = @import("log.zig");
+@@ -147,6 +148,11 @@ pub fn plan(srv: *Server, cx: *Cx, is_chat: bool, raw: Value, format: ?[]const u
+         if (p != .bool) return cx.refuse("parallel_tool_calls must be a boolean");
+         policy.single = !p.bool;
+     }
++    // TF_TOOL_CALL_GUARD: no tools offered, but the history called them
++    if (is_chat and input.tools.len == 0 and tool_guard.on() and tool_guard.usedTools(input.messages)) {
++        input.messages = try tool_guard.withNote(cx.a, input.messages);
++        policy.guard = true;
++    } else if (is_chat and input.tools.len > 0 and tool_guard.on()) policy.drop_rejected = true;
+     const options = body.get("stream_options");
+     return .{
+         .input = input,
+@@ -393,6 +399,10 @@ pub const Run = struct {
+             if (!s.tools) {
+                 // completions stream text only, with its logprob rows when asked
+                 if (!r.is_chat and delta != .string and (delta != .object or delta.object.get("content") == null)) return;
++                if (r.plan.policy.guard) {
++                    const d = (r.policyDelta(delta) catch return error.Closed) orelse return;
++                    return r.emit(r.chunk(d, null) catch return error.Closed);
++                }
+                 return r.emit(r.chunk(delta, null) catch return error.Closed);
+             }
+             @import("openai_calls.zig").streamed(r, delta) catch return error.Closed;
+@@ -406,7 +416,7 @@ pub const Run = struct {
+ 
+     /// The one-call policy on a streamed delta: text filtered, tool_calls dropped; null when nothing is left.
+     fn policyDelta(r: *Run, delta: Value) Allocator.Error!?Value {
+-        if (!r.plan.policy.single) return if (delta.truthy()) delta else null;
++        if (!r.plan.policy.filtering()) return if (delta.truthy()) delta else null;
+         if (delta == .string) {
+             const t = try r.plan.policy.text(r.a, delta.string);
+             return if (t.len > 0) Value{ .string = t } else null;
+@@ -511,6 +521,10 @@ pub const Run = struct {
+             } else if (r.plan.policy.kept(reply.content, r.prose_sent.items)) |rest| {
+                 r.emit(r.chunk(.{ .string = rest }, null) catch return) catch return;
+             }
++        } else if (r.plan.policy.guard) {
++            const tail = r.plan.policy.flush();
++            if (tail.len > 0) r.emit(r.chunk(.{ .string = tail }, null) catch return) catch return;
++            if (r.plan.policy.filter.hid) log.line("tool-call guard: hid call markup from {s}, a streamed reply to a request without tools", .{r.id});
+         }
+         @import("logprobs.zig").project(r.srv, &cx, &reply, r.plan.input.tools, calls) catch |e| return r.streamFailed(if (e == error.Refused) cx.message else "out of memory");
+         // the entries no chunk carried yet, once the stop and tool policies are final
+diff --git a/zig/src/server/openai_calls.zig b/zig/src/server/openai_calls.zig
+index 1199212da..d7d4abef9 100644
+--- a/zig/src/server/openai_calls.zig
++++ b/zig/src/server/openai_calls.zig
+@@ -3,6 +3,7 @@ const std = @import("std");
+ const json = @import("json");
+ const chat = @import("chat.zig");
+ const tool_parse = @import("tool_parse.zig");
++const tool_policy = @import("tool_policy.zig");
+ const tool_stream = @import("tool_stream.zig");
+ const cortheon = @import("cortheon/cortheon.zig");
+ const log = @import("log.zig");
+@@ -14,7 +15,14 @@ const choice: u32 = 0;
+ 
+ pub fn attach(r: anytype, reply: *chat.Reply) Allocator.Error!?[]Value {
+     const tools = r.plan.input.tools;
+-    if (tools.len == 0) return null;
++    if (tools.len == 0) {
++        if (r.plan.policy.guard) {
++            const shown = try r.plan.policy.content(r.a, reply.content);
++            if (shown.len != reply.content.len) log.line("tool-call guard: hid call markup from {s}, a reply to a request without tools", .{r.id});
++            reply.content = shown;
++        }
++        return null;
++    }
+     if (reply.native_tool_format) {
+         const found = reply.native_calls;
+         const calls = (if (r.turn != null) cortheon.clientCalls(found) else found) orelse return null;
+@@ -33,12 +41,16 @@ pub fn attach(r: anytype, reply: *chat.Reply) Allocator.Error!?[]Value {
+     const cut = if (!r.plan.policy.single and std.mem.eql(u8, reply.finish_reason, "length")) try tool_stream.cutCalls(r.a, reply.content, tools) else null;
+     if (cut != null) reply.content = try @import("reply_text.zig").cutProse(r.a, reply.content);
+     const found = cut orelse parsed.calls;
++    // TF_TOOL_CALL_GUARD: the envelopes the parser kept as text (unoffered tools, malformed calls) leave the reply
++    const dropped = r.plan.policy.drop_rejected and parsed.rejected_envelopes > 0;
++    const base = if (dropped) try tool_policy.hideCalls(r.a, parsed.content) else parsed.content;
++    if (dropped) log.line("tool-call guard: hid {d} unoffered or malformed tool envelopes from {s}", .{ parsed.rejected_envelopes, r.id });
+     const calls = (if (r.turn != null) cortheon.clientCalls(found) else found) orelse {
+-        if (r.plan.policy.single or parsed.calls != null) reply.content = try r.plan.policy.parsedContent(r.a, parsed.content);
++        if (r.plan.policy.single or parsed.calls != null or dropped) reply.content = try r.plan.policy.parsedContent(r.a, base);
+         return null;
+     };
+     if (cut != null) return try numbered(r, calls);
+-    reply.content = try r.plan.policy.parsedContent(r.a, parsed.content);
++    reply.content = try r.plan.policy.parsedContent(r.a, base);
+     reply.finish_reason = "tool_calls";
+     if (r.plan.policy.single) reply.tool_calls_streamed = false;
+     return try numbered(r, if (r.plan.policy.single and calls.len > 1) calls[0..1] else calls);
+diff --git a/zig/src/server/tool_guard.zig b/zig/src/server/tool_guard.zig
+new file mode 100644
+index 000000000..b73abdfa1
+--- /dev/null
++++ b/zig/src/server/tool_guard.zig
+@@ -0,0 +1,90 @@
++//! TF_TOOL_CALL_GUARD=1: a chat request that offers no tools (none sent, or tool_choice "none") although its history
++//! called them gets a closing system note that tools are unavailable, and any tool-call markup the model writes anyway
++//! is hidden from the reply (tool_stream.Policy.guard) instead of reaching the client as text. A request that does offer
++//! tools has the envelopes the parser keeps as text (a call to a tool it did not offer, a malformed call) hidden the same
++//! way (Policy.drop_rejected). Off by default.
++const std = @import("std");
++const json = @import("json");
++const Value = json.Value;
++const Allocator = std.mem.Allocator;
++
++/// The note closing the prompt of a guarded request.
++pub const note = "Tools are not available for this reply. Answer in plain text from what you already have; do not write tool calls.";
++
++var cached: std.atomic.Value(u8) = .init(0); // 0 unread, 1 off, 2 on
++
++/// Whether TF_TOOL_CALL_GUARD is 1 (read once).
++pub fn on() bool {
++    const v = cached.load(.monotonic);
++    if (v != 0) return v == 2;
++    const set = if (std.c.getenv("TF_TOOL_CALL_GUARD")) |s| std.mem.eql(u8, std.mem.span(s), "1") else false;
++    cached.store(if (set) 2 else 1, .monotonic);
++    return set;
++}
++
++/// Whether `messages` (the normalized list) holds a tool result or an assistant turn with tool calls.
++pub fn usedTools(messages: Value) bool {
++    if (messages != .array) return false;
++    for (messages.array) |m| {
++        if (m != .object) continue;
++        if (m.object.get("role")) |r| if (r == .string and std.mem.eql(u8, r.string, "tool")) return true;
++        if (m.object.get("tool_calls")) |c| if (c.truthy()) return true;
++    }
++    return false;
++}
++
++/// `messages` with the guard's system note appended.
++pub fn withNote(a: Allocator, messages: Value) Allocator.Error!Value {
++    const o = try json.newObject(a);
++    try o.put(a, "role", .{ .string = "system" });
++    try o.put(a, "content", .{ .string = note });
++    const list = try a.alloc(Value, messages.array.len + 1);
++    @memcpy(list[0..messages.array.len], messages.array);
++    list[messages.array.len] = .{ .object = o };
++    return .{ .array = list };
++}
++
++test "usedTools: a tool result or assistant tool_calls, not plain chat" {
++    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
++    defer arena.deinit();
++    const a = arena.allocator();
++    const plain = (try json.parseText(a, "[{\"role\":\"user\",\"content\":\"hi\"},{\"role\":\"assistant\",\"content\":\"hello\"}]")).ok;
++    try std.testing.expect(!usedTools(plain));
++    const called = (try json.parseText(a, "[{\"role\":\"user\",\"content\":\"q\"},{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"id\":\"c1\"}]}]")).ok;
++    try std.testing.expect(usedTools(called));
++    const result = (try json.parseText(a, "[{\"role\":\"tool\",\"content\":\"r\"}]")).ok;
++    try std.testing.expect(usedTools(result));
++    const noted = try withNote(a, called);
++    try std.testing.expectEqual(@as(usize, 3), noted.array.len);
++    try std.testing.expectEqualStrings("system", noted.array[2].object.get("role").?.string);
++}
++
++test "Policy.guard: whole and unclosed call envelopes leave the reply, prose stays, streamed or whole" {
++    const ts = @import("tool_stream.zig");
++    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
++    defer arena.deinit();
++    const a = arena.allocator();
++    const off: ts.Policy = .{};
++    const call = "<tool_call>session_search<arg_key>after</arg_key><arg_value>7d</arg_value></tool_call>";
++    try std.testing.expectEqualStrings("Done." ++ call, try off.content(a, "Done." ++ call));
++    const guarded: ts.Policy = .{ .guard = true };
++    try std.testing.expectEqualStrings("Done. More.", try guarded.content(a, "Done." ++ call ++ call ++ " More."));
++    try std.testing.expectEqualStrings("Summary", try guarded.content(a, "Summary<tool_call>session_search<arg_key>q"));
++    try std.testing.expectEqualStrings("a < b and <b>bold</b>", try guarded.content(a, "a < b and <b>bold</b>"));
++    // streamed: split across deltas, the markup never reaches the text
++    var p: ts.Policy = .{ .guard = true };
++    var shown: std.ArrayList(u8) = .empty;
++    for ([_][]const u8{ "Here", " it is <tool", "_call>session_search<arg_key>a</arg_key>", "<arg_value>1</arg_value></tool_", "call><tool_call>x</tool_call>", " end" }) |d| try shown.appendSlice(a, try p.text(a, d));
++    try shown.appendSlice(a, p.flush());
++    try std.testing.expectEqualStrings("Here it is  end", shown.items);
++    try std.testing.expect(p.filter.hid);
++}
++
++test "hideCalls: drop_rejected's filter keeps prose around an unoffered call" {
++    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
++    defer arena.deinit();
++    const a = arena.allocator();
++    const hide = @import("tool_stream.zig").hideCalls;
++    try std.testing.expectEqualStrings("Let me check. ok", try hide(a, "Let me check.<tool_call>session_search<arg_key>q</arg_key><arg_value>x</arg_value></tool_call> ok"));
++    try std.testing.expectEqualStrings("plain", try hide(a, "plain"));
++}
+diff --git a/zig/src/server/tool_policy.zig b/zig/src/server/tool_policy.zig
+index 774cbc256..cc1e872d9 100644
+--- a/zig/src/server/tool_policy.zig
++++ b/zig/src/server/tool_policy.zig
+@@ -24,6 +24,7 @@ pub const TextFilter = struct {
+     scan: usize = 0,
+     hidden: ?[2]usize = null,
+     hidden_from: usize = 0,
++    hid: bool = false, // an envelope was hidden (TF_TOOL_CALL_GUARD logs it)
+     deferred: bool = false, // a closed envelope was hidden: later prose waits for the reply's final content
+     code: reply_code.Scanner = .{},
+ 
+@@ -80,6 +81,7 @@ pub const TextFilter = struct {
+             if (callTag(rest[1..end])) {
+                 f.sent = start;
+                 f.hidden = .{ start + 1, start + end };
++                f.hid = true;
+                 f.hidden_from = start + end + 1;
+                 f.matchCloser(b, f.hidden.?);
+                 return b[emit_start..f.sent];
+@@ -111,26 +113,33 @@ pub const TextFilter = struct {
+     }
+ };
+ 
+-/// ``parallel_tool_calls: false`` keeps one call and hides call markup from streamed prose.
++/// ``parallel_tool_calls: false`` keeps one call and hides call markup from streamed prose; ``guard``
++/// (TF_TOOL_CALL_GUARD, tool_guard.zig) hides it from a reply to a request that offers no tools.
+ pub const Policy = struct {
+     single: bool = false,
++    guard: bool = false,
++    drop_rejected: bool = false, // TF_TOOL_CALL_GUARD with tools offered: unoffered or malformed envelopes leave the reply
+     filter: TextFilter = .{},
+ 
++    pub fn filtering(p: *const Policy) bool {
++        return p.single or p.guard;
++    }
++
+     pub fn maxCalls(p: *const Policy) ?usize {
+         return if (p.single) 1 else null;
+     }
+ 
+     /// Filters a str delta's text (dict deltas lose tool_calls and filter content), or passes it through.
+     pub fn text(p: *Policy, a: Allocator, s: []const u8) Allocator.Error![]const u8 {
+-        return if (p.single) p.filter.feed(a, s) else s;
++        return if (p.filtering()) p.filter.feed(a, s) else s;
+     }
+ 
+     pub fn flush(p: *Policy) []const u8 {
+-        return if (p.single) p.filter.finish() else "";
++        return if (p.filtering()) p.filter.finish() else "";
+     }
+ 
+     pub fn content(p: *const Policy, a: Allocator, s: []const u8) Allocator.Error![]const u8 {
+-        if (!p.single) return s;
++        if (!p.filtering()) return s;
+         var f: TextFilter = .{};
+         const head = try f.feed(a, s);
+         return std.mem.concat(a, u8, &.{ head, f.finish() });
+@@ -138,7 +147,7 @@ pub const Policy = struct {
+ 
+     /// parsed_content: parsed reply content; whole envelopes left as text kept, rest filtered; unclosed stays hidden.
+     pub fn parsedContent(p: *const Policy, a: Allocator, s: []const u8) Allocator.Error![]const u8 {
+-        if (!p.single) return s;
++        if (!p.filtering()) return s;
+         var out: std.ArrayList(u8) = .empty;
+         var cursor: usize = 0;
+         var code: reply_code.Scanner = .{};
+@@ -156,11 +165,18 @@ pub const Policy = struct {
+         const shown = if (std.mem.startsWith(u8, final, sent)) sent else reply_text.pyLstrip(sent);
+         if (!std.mem.startsWith(u8, final, shown)) return null;
+         const rest = final[shown.len..];
+-        if (p.single) return if (rest.len > 0) rest else null;
++        if (p.filtering()) return if (rest.len > 0) rest else null;
+         return if (reply_text.pyStrip(rest).len > 0) rest else null;
+     }
+ };
+ 
++/// ``s`` without its call envelopes (whole ones, and an unclosed one to the end).
++pub fn hideCalls(a: Allocator, s: []const u8) Allocator.Error![]const u8 {
++    var f: TextFilter = .{};
++    const head = try f.feed(a, s);
++    return std.mem.concat(a, u8, &.{ head, f.finish() });
++}
++
+ /// The first whole envelope from ``from`` (``<((?:NAME:)?tool_call)>.*?</\1>``, any case).
+ fn wholeEnvelope(a: Allocator, s: []const u8, from: usize, code: *reply_code.Scanner) Allocator.Error!?struct { start: usize, end: usize } {
+     var at = from;
+diff --git a/zig/src/server/tool_stream.zig b/zig/src/server/tool_stream.zig
+index 47b118c4d..d39cf6e75 100644
+--- a/zig/src/server/tool_stream.zig
++++ b/zig/src/server/tool_stream.zig
+@@ -451,4 +451,5 @@ const wrap = @import("tool_parse.zig").wrapCalls;
+ 
+ test {
+     _ = @import("tool_stream_test.zig");
++    _ = @import("tool_guard.zig");
+ }

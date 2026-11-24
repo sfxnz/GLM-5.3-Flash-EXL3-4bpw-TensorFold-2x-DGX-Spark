@@ -1,0 +1,1 @@
+load 19:26:28-19:27:25: head swapped out 2 MiB (rc 0)

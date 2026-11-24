@@ -1,0 +1,4 @@
+repo ashhart/TensorFold
+commit 81de26f649677aa72ae0034d4af6e010cd947038
+runtime_base_tag v1.2.10
+runtime_base_release tensorfold-1.2.10-linux-aarch64.tar.gz sha256 c335c44f81d55847a5f81d74a94ac3d09f81bd6688247cff972cf1f63fc18105

@@ -1,0 +1,41 @@
+info: rank 0: liveness lines from 1 ranks on port 29584
+info: glm kv selection: pool pages; TF_KV_PAGES=on (env); rank 0 of 2; cache fp8
+info: p2p: rank 0 of 2: NCCL's init log is at /tmp/tf-p2p-Nr8RKn/nccl.log until startup diagnostics finish; if this rank stops before then, that file holds NCCL's last lines
+info: rank 0 startup: entering NCCL init
+info: rank 0: NCCL id cc1281aa sent
+info: rank 0 startup: entering NCCL init (2 ranks, id cc1281aa, NCCL 2.30.7, CUDA device 0 000F:01:00.0)
+info: rank 0 startup: NCCL init done in 1577 ms
+info: p2p: rank 0 of 2: GPU 0 NVIDIA GB10 (0000000F:01:00.0); driver 580.178.04, CUDA driver API 13.0, NCCL 2.30.7
+info: p2p: peer access: TensorFold enables none itself (no cuCtxEnablePeerAccess); NCCL sets up its own peers
+info: p2p: set: NCCL_PROTO=LL,Simple
+info: p2p: NCCL transport (this rank's connections): rank 1 NET/IB (128 connections)
+info: rank 0 startup: entering peer warm-up
+info: rank 0 startup: entering weights
+info: checkpoint digest: 0.0 GiB read in 0.1 s, 120/120 cached files
+info: glm_mm decode windows: 6 pipeline stages (TF_GLM_MM_STAGES)
+info: TF_GLM_MOE_DIRECT=1: a decode window's EXL3 experts read flat picks, one slot sum
+info: weights: 45 layers loaded in 24.83s (16 readers read 132.8 GiB ahead of the loader)
+info: glm: 282 linears packed (8/8 bits, gpu qtile), 3.70 GiB freed in 0.38s
+info: TF_GLM_L2PF: 176 rows, 1413 MiB a decode window, 2 CTAs a site, the gathers' sites at 150 GB/s (0: unpaced)
+info: glm: opt-in prompt numerics: absorb/expand tensor cores (TF_GLM_ABSORB_MMA=1)
+info: glm: prompt passes of 4096 rows, 2048 while another stream decodes
+info: glm: a prompt chunk's exchanges in 3 row pieces
+info: glm: TF_GLM_GRAPH_MAX=32: verify graph cache capped at 32 graphs a rank
+info: glm: TF_GLM_DRAFT_GRAPHS=1: DFlash2's block passes of 1-8 streams and ingests of 1-64 rows as CUDA graphs
+info: glm: TF_GLM_GRAPH_TAPS=1: DFlash2's lone (1-8 rows) and shared (1-32 rows) verify taps are graphed
+info: glm: TF_GLM_GRAPHS=on: draft steps, lone verify windows, and shared verify windows as CUDA graphs
+info: checkpoint digest: 0.0 GiB read in 0.0 s, 1/1 cached files
+info: dflash2: TF_GLM_DRAFT_DOWN8=1: the drafter's down at 8 bits (drafts may move; verify decides every token)
+info: dflash2: drafter from /home/sfxnz/.cache/huggingface/hub/models--incoai--GLM-5.3-Flash-DFlash2/snapshots/7d74cdd881ed7e32c31175984a67823127b66cfe (Apache-2.0), linears at 4 bits, 0.45 GiB on the device
+info: RoCE all-gather: 2 ranks, 2 HCA(s), shards up to 4096 KiB by RDMA writes
+info: [tensorfold] glm: rank 0 of 2 sums through the group collective (RoCE gathers on)
+info: glm: expert form (kept): classic (TF_GLM_EXPERT_FORM); DFlash2 keeps its seed window and step prices
+info: KV page groups: one page 1.73 MiB, 512 rows of the full group; full: layers not named, 3.46 KiB a token, 512 rows a page, 0 B padding (0.0 %); snapshot, outside the pool: 162.00 MiB on 94 pages, 586.00 KiB padding (0.4 %)
+info: rank 0 startup: entering calibration
+info: rank 0 startup: entering ready
+[tensorfold] chat template: the checkpoint's
+[tensorfold] warning: non-loopback server has no API key; requests are open
+[tensorfold] --vision: libtfvideo.so is required for video inputs (--vision); build the optional zig build video -Dffmpeg=PREFIX runtime against FFmpeg 9.0.2 and place it in lib beside the server; see packaging/RUNTIME.md; video_url parts are refused and /v1/models lists no video
+[tensorfold] CUDA sm_121 device 0 (NVIDIA GB10, memory shared with the host): model 83.38 GiB; 4 streams at once, the engine's own and 3 more taking 7232 pages of 512 rows (12.21 GiB) as they need them (enough for 7 at a 524288-token window), 302 MiB fixed each, of 15.6 GiB left after a 10.5 GiB reserve; prompts in passes of up to 2048 rows, 16 kept states' slots (2.5 GiB) and the prompt cache over the pool's pages; own glue kernels
+[tensorfold] profile: stable; registered overrides: TF_KV_SHARE=16 (identical, env); TF_KV_PAGES=on (identical, env)
+[tensorfold] serving glm-5.3-flash at http://0.0.0.0:8000/v1 (sampling: temperature 1.0, top_p 0.95; drafts: DFlash2 (/home/sfxnz/.cache/huggingface/hub/models--incoai--GLM-5.3-Flash-DFlash2/snapshots/7d74cdd881ed7e32c31175984a67823127b66cfe) + copies; context: 524288; loaded in 37.6s)
