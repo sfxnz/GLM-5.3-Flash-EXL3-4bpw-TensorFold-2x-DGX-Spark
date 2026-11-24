@@ -1,0 +1,18 @@
+# The release image (docker/Dockerfile at TF_VERSION=1.2.10) with tensorfold-native replaced by a source build of
+# engine-patches/ (BASE commit 81de26f64 + series). Everything else, lib/ included, stays upstream's. Build:
+#   docker build -f docker/Dockerfile.patched --build-context engine=DIR \
+#     --build-arg BIN_SHA256=<sha256 of DIR/tensorfold-native> --build-arg PATCHES=<sha256 of engine-patches/series files> \
+#     -t tf-glm53:1.3.0-v6m4 docker
+# DIR holds the `zig build -Dgpu=spark -Doptimize=ReleaseFast` output's zig-out/native/bin/.
+ARG BASE_IMAGE=tf-glm53:1.2.10
+FROM ${BASE_IMAGE}
+ARG BIN_SHA256
+ARG PATCHES
+RUN --mount=type=bind,from=engine,target=/engine \
+    echo "${BIN_SHA256}  /engine/tensorfold-native" | sha256sum -c - \
+ && install -m 0755 /engine/tensorfold-native /opt/tensorfold/bin/tensorfold-native \
+ && cd /opt/tensorfold && sed -i "s|^[0-9a-f]\{64\}  \./bin/tensorfold-native\$|${BIN_SHA256}  ./bin/tensorfold-native|" SHA256SUMS \
+ && grep -q "^${BIN_SHA256}  ./bin/tensorfold-native\$" SHA256SUMS \
+ && sha256sum -c --quiet SHA256SUMS
+LABEL tensorfold.native.sha256=${BIN_SHA256} \
+      tensorfold.patches=${PATCHES}

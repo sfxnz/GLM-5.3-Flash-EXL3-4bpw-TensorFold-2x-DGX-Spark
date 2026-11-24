@@ -1,0 +1,1028 @@
+From 5709bfa650c4e283e401b32fbd64c8bd7b1bdb42 Mon Sep 17 00:00:00 2001
+From: sfxnz <248329760+sfxnz@users.noreply.github.com>
+Date: Mon, 23 Nov 2026 15:37:02 +0000
+Subject: [PATCH 37/39] glm cuda: TF_GLM_GRAPHS lone + shared multi-stream
+ verify graphs (with TF_GLM_KV_SHARD + TF_GLM_GRAPH_TAPS) and C1-C8 DFlash2
+ drafter graphs (TF_GLM_DRAFT_GRAPHS)
+
+---
+ zig/src/families/glm/cuda.zig          |   2 +
+ zig/src/families/glm/cuda_engine.zig   |  14 +-
+ zig/src/families/glm/cuda_env_test.zig |   5 +-
+ zig/src/families/glm/cuda_forward.zig  |  57 +++
+ zig/src/families/glm/cuda_graphs.zig   | 646 +++++++++++++++++++++++++
+ zig/src/families/glm/cuda_images.zig   |  12 +
+ zig/src/families/glm/cuda_ranks.zig    |  15 +-
+ zig/src/families/glm/dflash.zig        |  35 +-
+ zig/src/platform/environment.zig       |   5 +
+ 9 files changed, 784 insertions(+), 7 deletions(-)
+ create mode 100644 zig/src/families/glm/cuda_graphs.zig
+
+diff --git a/zig/src/families/glm/cuda.zig b/zig/src/families/glm/cuda.zig
+index bcabd29c2..f486e3aa9 100644
+--- a/zig/src/families/glm/cuda.zig
++++ b/zig/src/families/glm/cuda.zig
+@@ -46,8 +46,10 @@ pub const native = @import("cuda_native.zig");
+ pub const snapshots = @import("cuda_snapshots.zig");
+ pub const kv_host = @import("cuda_kv_host.zig");
+ pub const pdl = @import("cuda_pdl.zig");
++pub const graphs = @import("cuda_graphs.zig");
+ 
+ test {
++    _ = graphs;
+     _ = lane_costs;
+     _ = @import("cuda_formats_csf0_test.zig");
+     _ = @import("cuda_tile.zig");
+diff --git a/zig/src/families/glm/cuda_engine.zig b/zig/src/families/glm/cuda_engine.zig
+index 0ce4e01f8..4d1b03a17 100644
+--- a/zig/src/families/glm/cuda_engine.zig
++++ b/zig/src/families/glm/cuda_engine.zig
+@@ -23,6 +23,7 @@ const prompt_pair = @import("cuda_prompt_pair.zig");
+ const kv_shard = @import("cuda_kv_shard.zig");
+ const kv_attn = @import("cuda_kv_shard_attn.zig");
+ const kv_keep = @import("cuda_kv_shard_keep.zig");
++const graphs_mod = @import("cuda_graphs.zig");
+ const tp = @import("tp");
+ const mesh_mod = @import("mesh");
+ pub const Options = @import("cuda_engine_types.zig").Options;
+@@ -113,6 +114,7 @@ pub const Engine = struct {
+     kv_room: ?cuda.DeviceBuffer = null, // TF_GLM_KV_SHARD: owner-computed attention's peer queries and outputs
+     kv_stage: ?cuda.DeviceBuffer = null, // ...and a resume's carry pieces (cuda_kv_shard_keep.piece_bytes)
+     kv_ctx: kv_attn.Ctx = undefined, // ...their place for the forward (read only with settings.kv_shard.on)
++    graphs: ?*graphs_mod.Graphs = null, // TF_GLM_GRAPHS: lone & shared verify windows, MTP draft steps, drafter passes
+ 
+     /// Opens rank `rank` of `world` over `comm`; the ranks agree on settings (cuda_ranks) before the weights load.
+     pub fn init(gpa: std.mem.Allocator, io: std.Io, d: *const cuda.Driver, ctx: *const cuda.Context, checkpoint: []const u8, lib: *const cuda.nccl.Library, comm: cuda.nccl.Comm, rank: usize, world: usize, o: Options) !*Engine {
+@@ -242,6 +244,11 @@ pub const Engine = struct {
+         errdefer e.prompt_out.free();
+         e.shared_buf = try cuda.DeviceBuffer.alloc(d, 8);
+         errdefer e.shared_buf.free();
++        if (o.settings.graphs != .off and o.mtp) {
++            e.graphs = try graphs_mod.Graphs.init(gpa, d, o.settings.graphs, rank, &e.bm, &e.bd, if (e.bs) |*b| b else null, c.hidden, share.vocab.len(), o.drafter);
++            if (rank == 0) std.log.info("glm: TF_GLM_GRAPHS={s}: draft steps, lone verify windows, and shared verify windows as CUDA graphs", .{@tagName(o.settings.graphs)});
++        }
++        errdefer if (e.graphs) |g| g.deinit();
+         errdefer @import("cuda_load_owner.zig").drain(stream, d);
+         try e.stream.synchronize();
+         return e;
+@@ -249,6 +256,7 @@ pub const Engine = struct {
+ 
+     pub fn deinit(e: *Engine) void {
+         e.stream.synchronize() catch {};
++        if (e.graphs) |g| g.deinit();
+         e.gpa.free(e.packs.ptrs);
+         e.gpa.free(e.packs.bits);
+         if (e.drafter) |dr| dr.deinit();
+@@ -516,7 +524,7 @@ pub const Engine = struct {
+         const at = e.cur.st.pos;
+         f.prof = e.profs[ids.len - 1];
+         if (f.prof) |p| try p.begin(e.stream, verifyLabel(ids.len));
+-        try f.run(@ptrCast(ids));
++        if (e.graphs) |g| try g.window(&f, @ptrCast(ids)) else try f.run(@ptrCast(ids));
+         if (e.drafter) |dr| try dr.noteVerify(e.slot, 0, ids.len, at, true);
+         e.cur.rows_at = e.bd.fnormed;
+         try e.draw(e.bd.logits, ids.len, at + 1, bits, out);
+@@ -543,7 +551,7 @@ pub const Engine = struct {
+         }
+         var one: [1]fw.Rank = .{.{ .w = &e.w, .st = segs[0].st, .b = b, .segs = segs[0..parts.len] }};
+         const f: fw.Forward = .{ .d = e.d, .m = &e.m, .stream = e.stream, .ranks = &one, .exchange = e.exchange(), .pieces = null, .split = e.settings.split, .ring = e.settings.ring, .kda_wide = e.settings.kda_wide, .taps = if (e.drafter) |dr| dr.taps(false) else null, .l2pf = if (e.l2pf) |*p| p else null, .kv = e.kvCtx(), .absorb_mma = e.settings.numerics.absorb_mma };
+-        try f.run(@ptrCast(ids[0..rows]));
++        if (e.graphs) |g| try g.sharedWindow(&f, @ptrCast(ids[0..rows])) else try f.run(@ptrCast(ids[0..rows]));
+         if (e.drafter) |dr| for (parts, segs[0..parts.len], 0..) |p, g, i| try dr.noteVerify(p.slot, g.row0, g.rows, g.st.pos, i == 0);
+         for (parts, segs[0..parts.len]) |p, g| {
+             try e.bind(p.slot);
+@@ -596,7 +604,7 @@ pub const Engine = struct {
+                 if (chances) |c| c[j] = 1; // a sampled or structured draft keeps chance 1: its window runs whole
+             }
+             if (j + 1 < depth) {
+-                try f.mtp(@ptrCast(out[j..][0..1]), &.{e.bm.fnormed});
++                if (e.graphs) |g| try g.step(&f, @ptrCast(out[j..][0..1]), e.bm.fnormed) else try f.mtp(@ptrCast(out[j..][0..1]), &.{e.bm.fnormed});
+                 try e.cur.st.setMtpLen(e.stream, e.cur.st.mtp_len + 1);
+                 e.cur.in_head += 1;
+             }
+diff --git a/zig/src/families/glm/cuda_env_test.zig b/zig/src/families/glm/cuda_env_test.zig
+index 841fa2df6..0f8ea934c 100644
+--- a/zig/src/families/glm/cuda_env_test.zig
++++ b/zig/src/families/glm/cuda_env_test.zig
+@@ -22,8 +22,11 @@ const switches = [_]Name{
+     .{ .name = "TF_GLM_DRAFT_ONLY_HEAD" },
+     .{ .name = "TF_GLM_DRAFT_DOWN8" },
+     .{ .name = "TF_GLM_FAST_LOAD" },
++    .{ .name = "TF_GLM_GRAPH_TAPS" },
++    .{ .name = "TF_GLM_DRAFT_GRAPHS" },
++    .{ .name = "TF_GLM_SHARED_GRAPHS", .default = true },
+ };
+-const counts = [_][:0]const u8{"TF_GLM_DFLASH2_LOG"};
++const counts = [_][:0]const u8{ "TF_GLM_DFLASH2_LOG", "TF_GLM_GRAPH_MAX", "TF_GLM_SHARED_GRAPH_MAX" };
+ const reals = [_][:0]const u8{"TF_GLM_DRAFT_CONFIDENCE"};
+ /// The window GLM may serve past config.json's: GLM's raisedCeiling reads it at the open, after these rows' check.
+ const windows = [_][:0]const u8{"TF_GLM_CONTEXT_CEILING"};
+diff --git a/zig/src/families/glm/cuda_forward.zig b/zig/src/families/glm/cuda_forward.zig
+index b1b513835..e8ff50d8f 100644
+--- a/zig/src/families/glm/cuda_forward.zig
++++ b/zig/src/families/glm/cuda_forward.zig
+@@ -397,6 +397,28 @@ pub const Forward = struct {
+         return f.runMode(ids, true);
+     }
+ 
++    /// Host-side prep for a graphed lone or shared verify window: validates, calls ready/shared.begin (may rebase), uploads ids.
++    pub fn runReady(f: *const Forward, ids: []const i32) !void {
++        const R = ids.len;
++        for (f.ranks) |r| {
++            if (R == 0 or R > r.b.rows) return error.BadWindow;
++            if (r.segs.len == 0) {
++                try r.st.ready(f.stream, R);
++                r.st.pending = R;
++                r.st.prompt = r.b.prefill;
++            } else try shared.begin(r, R, f.stream);
++            try cuda.copy_source.enqueue(f.d, r.b.ids, std.mem.sliceAsBytes(ids), f.stream);
++        }
++    }
++
++    /// Pure device launches of a non-prefill, no-image-crossing verify window (lone or shared) for CUDA graph capture.
++    pub fn launches(f: *const Forward, R: usize) !void {
++        const c = &f.ranks[0].w.config;
++        for (f.ranks) |r| try glue.embedB16(f.set(), f.stream, r.b.ids, r.w.embed, r.b.x, R, c.hidden, c.hc);
++        try f.whole(R);
++        try f.finish(R, true);
++    }
++
+     /// The same pass with `lm_head` only when its logits are read; final norms always cover every row.
+     pub fn runMode(f: *const Forward, ids: []const i32, head: bool) !void {
+         const R = ids.len;
+@@ -487,6 +509,41 @@ pub const Forward = struct {
+         return f.mtpMode(ids, hidden, true);
+     }
+ 
++    /// Host-side prep for a graphed 1-row MTP draft step: readyMtp (may rebase) + ids upload.
++    pub fn mtpReady(f: *const Forward, r: Rank, ids: []const i32) !void {
++        if (r.w.mtp == null) return error.NoMtpHead;
++        if (ids.len != 1 or r.b.rows == 0) return error.BadWindow;
++        try r.st.readyMtp(f.stream, 1);
++        try cuda.copy_source.enqueue(f.d, r.b.ids, std.mem.sliceAsBytes(ids), f.stream);
++    }
++
++    /// Pure device launches of a 1-row MTP draft step (non-prefill, no image splice) for CUDA graph capture.
++    pub fn mtpGraphed(f: *const Forward, hidden: u64) !void {
++        const c = &f.ranks[0].w.config;
++        const D: usize = c.hidden;
++        const r = f.ranks[0];
++        const m = r.w.mtp.?;
++        const b = r.b;
++        if (hidden != b.hin) try f.d.check(f.d.api.cuMemcpyDtoDAsync_v2(b.hin, hidden, D * 2, f.stream.handle), "cuMemcpyDtoDAsync");
++        try glue.embedB16(f.set(), f.stream, b.ids, r.w.embed, b.me, 1, D, 1);
++        if (r.st.mtp_len == 0) try f.d.check(f.d.api.cuMemsetD8Async(b.me, 0, D * 2, f.stream.handle), "cuMemsetD8Async");
++        try glue.rmsnorm(f.set(), f.stream, b.me, D, m.enorm, b.mcat, 2 * D, null, c.eps, 1, D);
++        try glue.rmsnorm(f.set(), f.stream, b.hin, D, m.hnorm, b.mcat + D * 2, 2 * D, null, c.eps, 1, D);
++        try b16.matmul(f.set(), f.stream, b.mcat, 2 * D, m.eh, b.mx, b.kda.mm_part, 1, D, 2 * D, false);
++        try glue.rmsnormBy(f.set(), f.stream, b.mx, D, m.layer.in_norm, b.normed, D, b.xs, c.eps, 1, D);
++        const nch = @min(latent.chunksFor(r.st.mtp_len + 1), b.nch);
++        const k: dsa_block.Kernels = .{ .set = f.set(), .ops = f.m.ops() };
++        try dsa_block.block(k, f.stream, m.layer.mixer.mla, r.st.mtp_caches, b.dsa, b.normed, D, 1, r.st.mtp_pos_dev, r.st.mtp_len, nch, b.part_rows, slot(r, 1));
++        try f.resolve(1);
++        try glue.residualAdd(f.set(), f.stream, b.mx, b.mx, b.gathered, 1, D, r.w.share.world);
++        try glue.rmsnormBy(f.set(), f.stream, b.mx, D, m.layer.post_norm, b.normed, D, b.xs, c.eps, 1, D);
++        try f.ffn(r, m.layer, 1, slot(r, 1));
++        try f.resolve(1);
++        try glue.residualAdd(f.set(), f.stream, b.mx, b.mx, b.gathered, 1, D, r.w.share.world);
++        try glue.rmsnorm(f.set(), f.stream, b.mx, D, m.norm, b.fnormed, D, b.fxs, c.eps, 1, D);
++        try q4.matmul(&f.m.q4, f.stream, b.fnormed, D, b.fxs, m.draft, b.logits, 1);
++    }
++
+     pub fn mtpMode(f: *const Forward, ids: []const i32, hidden: []const u64, propose: bool) !void {
+         const n = ids.len;
+         const c = &f.ranks[0].w.config;
+diff --git a/zig/src/families/glm/cuda_graphs.zig b/zig/src/families/glm/cuda_graphs.zig
+new file mode 100644
+index 000000000..49fdae57d
+--- /dev/null
++++ b/zig/src/families/glm/cuda_graphs.zig
+@@ -0,0 +1,646 @@
++//! TF_GLM_GRAPHS: lone verify windows, shared multi-stream verify windows, MTP draft steps, and DFlash2 drafter
++//! passes as CUDA graphs, keyed by every host choice (including TF_GLM_KV_SHARD ownership roles & latent page tables).
++//!
++//! - TF_GLM_GRAPHS=1|check: enables CUDA graphs (`check` replays graph then runs eager and compares logits, hidden,
++//!   and taps bit-for-bit across every row).
++//! - TF_GLM_GRAPH_TAPS=1: graphs DFlash2 tap writes (df_tap) for lone (1-8 rows) and shared (1-32 rows) verify windows.
++//! - TF_GLM_SHARED_GRAPHS=0|1 (default 1 when TF_GLM_GRAPHS is on): graphs multi-stream shared verify windows (1-32
++//!   rows, up to 16 segments) including sharded KV NCCL send/recv exchanges.
++//! - TF_GLM_DRAFT_GRAPHS=1: graphs DFlash2 block passes (1-8 streams) and context ingests (1-64 rows).
++//! - TF_GLM_GRAPH_MAX / TF_GLM_SHARED_GRAPH_MAX: per-rank graph cache caps; TF_GLM_GRAPH_FLOOR_GIB (default 4 GiB)
++//!   halts new captures under the free-RAM floor while replaying held graphs.
++const std = @import("std");
++const cuda = @import("cuda");
++const gc = cuda.graph_cache;
++const sparse = @import("cuda_sparse.zig");
++const latent = @import("cuda_latent.zig");
++const dsa_block = @import("cuda_dsa_block.zig");
++const fw = @import("cuda_forward.zig");
++const weights = @import("cuda_weights.zig");
++const taps_mod = @import("cuda_taps.zig");
++const kv_attn = @import("cuda_kv_shard_attn.zig");
++
++pub const Mode = enum(u8) { off = 0, on = 1, check = 2 };
++
++/// TF_GLM_GRAPHS' value: 0, 1 or check (null: anything else).
++pub fn parse(v: []const u8) ?Mode {
++    if (std.mem.eql(u8, v, "0")) return .off;
++    if (std.mem.eql(u8, v, "1")) return .on;
++    if (std.mem.eql(u8, v, "check")) return .check;
++    return null;
++}
++
++/// Lone verify windows graphed: 1-4 rows (or 1-8 under TF_GLM_GRAPH_TAPS on a DFlash2 boot).
++pub const verify_rows = 4;
++pub const tap_rows = 8;
++/// Shared verify windows graphed: up to 32 rows, up to 16 segments (Engine.shared_rows / Engine.max_shared).
++pub const shared_verify_rows: usize = 32;
++pub const shared_verify_segs: usize = 16;
++pub const default_shared_cap: u32 = 32;
++/// TF_GLM_DRAFT_GRAPHS: drafter block passes for 1-8 streams (covers C1/C4/C8), ingests for 1-64 rows.
++pub const block_streams: usize = 8;
++pub const ingest_rows: usize = 64;
++
++/// A drafter graph's key: a block pass of `n` streams (rank0: with selector projection), or an ingest of `n` rows.
++pub const BlockKey = struct { ingest: bool, n: u16, rank0: bool };
++
++/// Bytes of one row's DFlash2 taps (dflash.TAP_ROW).
++const tap_row = taps_mod.layers.len * taps_mod.hidden * 2;
++
++/// What a DSA layer's launches take from the host for `rows` rows at `pos` (dsa_block.attend, sparse.selectTokens).
++pub const Shape = struct {
++    dense: bool, // pos < dense_limit: dense attention
++    sparse: bool, // dsa_block.sparseRows: selection and sparse attention (both at a window across the edge)
++    nch: u32, // the dense attention's 512-key chunks (its grid's z), capped by the buffers
++    np: u32, // sparse.poolBucket: the pools selection scores (quick, wide, dscore and dsel follow it)
++    nb: u32, // the score kernel's 64-column blocks (sparse.scoreColumns)
++    dsel: u32, // sparse.dselScanCtas: the decode select's scan grid
++};
++
++pub fn shapeAt(l: dsa_block.Layer, pk_rows: usize, nch_cap: usize, pos: usize, rows: usize) Shape {
++    const sp = dsa_block.sparseRows(l, pos, rows);
++    const np = sparse.poolBucket(pos, rows, pk_rows - 2);
++    return .{
++        .dense = pos < l.dense_limit,
++        .sparse = sp,
++        .nch = @intCast(@min(latent.chunksFor(pos + rows), nch_cap)),
++        .np = if (sp) @intCast(np) else 0,
++        .nb = if (sp) @intCast(std.math.divCeil(usize, sparse.scoreColumns(pos, rows, np), 64) catch unreachable) else 0,
++        .dsel = if (sp) @intCast(sparse.dselScanCtas(pos, rows, np)) else 0,
++    };
++}
++
++fn cacheWords(c: dsa_block.Caches) [11]u64 {
++    return .{ c.lc, c.ls, c.ik, c.ig, c.pk, c.pk_rows, c.pt, c.ps, c.pks, c.lpt, c.lps };
++}
++
++fn mix64(h: u64, v: u64) u64 {
++    var x = h ^ v;
++    x *%= 0x100000001b3;
++    return x ^ (x >> 33);
++}
++
++fn mix128(lo: *u64, hi: *u64, v: u64) void {
++    lo.* = mix64(lo.*, v);
++    hi.* = mix64(hi.*, v ^ 0x9e3779b97f4a7c15 ^ (lo.* >> 17));
++}
++
++/// A one-row MTP draft step's key: equal keys launch equal graphs.
++pub const DraftKey = struct {
++    caches: u64,
++    first: bool,
++    shape: Shape,
++};
++
++pub fn draftKey(c: dsa_block.Caches, l: dsa_block.Layer, nch_cap: usize, mtp_len: usize) DraftKey {
++    const w = cacheWords(c);
++    return .{ .caches = gc.fingerprintOf(&w), .first = mtp_len == 0, .shape = shapeAt(l, c.pk_rows, nch_cap, mtp_len, 1) };
++}
++
++/// A lone verify window's key (includes TF_GLM_KV_SHARD ownership role and latent page table).
++pub const VerifyKey = struct {
++    rows: u8,
++    role: u8 = 0,
++    state: u64,
++    shape: Shape,
++    taps: u64 = 0,
++};
++
++pub fn verifyKey(caches: []const dsa_block.Caches, cur: []const u1, l: ?dsa_block.Layer, nch_cap: usize, pos: usize, rows: usize) VerifyKey {
++    return verifyKeySharded(caches, cur, l, nch_cap, pos, rows, 0, .local);
++}
++
++pub fn verifyKeySharded(caches: []const dsa_block.Caches, cur: []const u1, l: ?dsa_block.Layer, nch_cap: usize, pos: usize, rows: usize, state_ptr: usize, role: kv_attn.Role) VerifyKey {
++    var h: u64 = mix64(0xcbf29ce484222325, @intCast(state_ptr));
++    for (caches) |c| {
++        const w = cacheWords(c);
++        h = mix64(h, gc.fingerprintOf(&w));
++    }
++    for (cur) |x| h = mix64(h, @as(u64, x));
++    const none = std.mem.zeroes(Shape);
++    return .{
++        .rows = @intCast(rows),
++        .role = @intFromEnum(role),
++        .state = h,
++        .shape = if (l) |a| (if (caches.len > 0) shapeAt(a, caches[0].pk_rows, nch_cap, pos, rows) else none) else none,
++    };
++}
++
++/// A shared multi-stream verify window's key: 128-bit state + 128-bit per-segment shape hash, segment count,
++/// total rows, and tap destination address. Covers all KDA/DSA segment pointers, parities, sharded roles, and grids.
++pub const SharedVerifyKey = struct {
++    rows: u8,
++    segs: u8,
++    state_lo: u64,
++    state_hi: u64,
++    shapes_lo: u64,
++    shapes_hi: u64,
++    taps: u64 = 0,
++};
++
++pub fn sharedVerifyKey(segs: []const fw.Seg, l: ?dsa_block.Layer, nch_cap: usize, rank: usize, sharded: bool, taps: u64) SharedVerifyKey {
++    var st_lo: u64 = 0xcbf29ce484222325;
++    var st_hi: u64 = 0x84222325cbf29ce4;
++    var sh_lo: u64 = 0x517cc1b727220a95;
++    var sh_hi: u64 = 0x27220a95517cc1b7;
++    var total_rows: usize = 0;
++    for (segs) |g| {
++        total_rows += g.rows;
++        const role: kv_attn.Role = if (sharded) kv_attn.role(g.st.hold, rank) else .local;
++        mix128(&st_lo, &st_hi, @intFromPtr(g.st));
++        mix128(&st_lo, &st_hi, (@as(u64, @intCast(g.row0)) << 16) | (@as(u64, @intCast(g.rows)) << 4) | @intFromEnum(role));
++        for (g.st.caches) |c| {
++            const w = cacheWords(c);
++            mix128(&st_lo, &st_hi, gc.fingerprintOf(&w));
++        }
++        var cur_bits: u64 = 0;
++        for (g.st.cur, 0..) |x, idx| {
++            cur_bits |= (@as(u64, x) << @intCast(idx & 63));
++            if ((idx & 63) == 63 or idx + 1 == g.st.cur.len) {
++                mix128(&st_lo, &st_hi, cur_bits);
++                cur_bits = 0;
++            }
++        }
++        if (l) |a| {
++            if (g.st.caches.len > 0) {
++                const s = shapeAt(a, g.st.caches[0].pk_rows, nch_cap, g.st.pos, g.rows);
++                const flags: u64 = (@as(u64, @intFromBool(s.dense)) << 1) | @intFromBool(s.sparse);
++                mix128(&sh_lo, &sh_hi, (flags << 32) | s.nch);
++                mix128(&sh_lo, &sh_hi, (@as(u64, s.np) << 32) | s.nb);
++                mix128(&sh_lo, &sh_hi, (@as(u64, s.dsel) << 16) | @as(u64, @intCast(g.rows)));
++            }
++        }
++    }
++    return .{
++        .rows = @intCast(total_rows),
++        .segs = @intCast(segs.len),
++        .state_lo = st_lo,
++        .state_hi = st_hi,
++        .shapes_lo = sh_lo,
++        .shapes_hi = sh_hi,
++        .taps = taps,
++    };
++}
++
++/// Why a draft step runs eagerly under TF_GLM_GRAPHS (null: it is graphed).
++pub fn draftEagerBecause(f: *const fw.Forward, ids_len: usize) !?[]const u8 {
++    if (f.ranks.len != 1) return "local ranks";
++    if (ids_len != 1) return "rows";
++    const lo = f.ranks[0].st.mtp_len + 1;
++    if (f.images) |im| if (try im.v.crosses(im.slot, lo, lo + ids_len)) return "image rows";
++    if (f.prof != null) return "profiler";
++    if (f.taps != null) return "drafter taps";
++    if (f.ranks[0].st.mtp_caches.pks != 0) return "host KV";
++    if (f.ranks[0].b.prefill) return "prompt buffers";
++    return null;
++}
++
++pub fn verifyEagerBecause(f: *const fw.Forward, ids_len: usize) !?[]const u8 {
++    return verifyEagerAt(f, ids_len, verify_rows, false);
++}
++
++pub fn verifyEagerAt(f: *const fw.Forward, ids_len: usize, rows: usize, taps: bool) !?[]const u8 {
++    if (f.ranks.len != 1) return "local ranks";
++    if (ids_len == 0 or ids_len > rows) return "rows";
++    const r = f.ranks[0];
++    if (r.b.prefill) return "prompt buffers";
++    if (r.segs.len > 0) return "shared window";
++    if (f.images) |im| if (try im.v.crosses(im.slot, r.st.pos, r.st.pos + ids_len)) return "image rows";
++    if (f.prof != null) return "profiler";
++    if (f.taps != null and !taps) return "drafter taps";
++    for (r.st.caches) |c| if (c.pks != 0) return "host KV";
++    return null;
++}
++
++/// Why a shared verify window runs eagerly under TF_GLM_GRAPHS (null: it is graphed).
++pub fn sharedEagerAt(f: *const fw.Forward, ids_len: usize, taps: bool) ?[]const u8 {
++    if (f.ranks.len != 1) return "local ranks";
++    if (ids_len == 0 or ids_len > shared_verify_rows) return "rows";
++    const r = f.ranks[0];
++    if (r.b.prefill) return "prompt buffers";
++    if (r.segs.len == 0 or r.segs.len > shared_verify_segs) return "segments";
++    if (f.images != null) return "image rows";
++    if (f.prof != null) return "profiler";
++    if (f.taps != null and !taps) return "drafter taps";
++    for (r.segs) |g| for (g.st.caches) |c| if (c.pks != 0) return "host KV";
++    return null;
++}
++
++fn firstMla(layers: []const weights.Layer) ?dsa_block.Layer {
++    for (layers) |l| switch (l.mixer) {
++        .mla => |a| return a,
++        .kda => {},
++    };
++    return null;
++}
++
++/// MemAvailable in GiB (null where /proc/meminfo cannot be read).
++fn memAvailableGiB() ?f64 {
++    var buf: [4096]u8 = undefined;
++    const fd = std.c.open("/proc/meminfo", .{ .ACCMODE = .RDONLY });
++    if (fd < 0) return null;
++    defer _ = std.c.close(fd);
++    const n = std.c.read(fd, &buf, buf.len);
++    if (n <= 0) return null;
++    var it = std.mem.splitScalar(u8, buf[0..@intCast(n)], '\n');
++    while (it.next()) |line| {
++        if (!std.mem.startsWith(u8, line, "MemAvailable:")) continue;
++        var t = std.mem.tokenizeScalar(u8, line["MemAvailable:".len..], ' ');
++        const kb = std.fmt.parseInt(u64, t.next() orelse return null, 10) catch return null;
++        return @as(f64, @floatFromInt(kb)) / (1 << 20);
++    }
++    return null;
++}
++
++pub const default_floor_gib = 4.0;
++var floor_gib: f64 = default_floor_gib;
++
++pub fn floorFrom(v: ?[]const u8) error{BadGraphFloor}!f64 {
++    const s = v orelse return default_floor_gib;
++    const x = std.fmt.parseFloat(f64, std.mem.trim(u8, s, " ")) catch return error.BadGraphFloor;
++    if (!std.math.isFinite(x) or x < 0) return error.BadGraphFloor;
++    return x;
++}
++
++fn room() bool {
++    const a = memAvailableGiB() orelse return true;
++    return a >= floor_gib;
++}
++
++pub fn cacheSettings(max: u32) gc.Settings {
++    return .{ .max = max, .hold = true };
++}
++
++pub const per_slot = perSlot(verify_rows);
++pub fn perSlot(rows: usize) usize {
++    return 4 * rows;
++}
++pub const max_slots = 4;
++
++pub fn verifyCap(slots: usize) u32 {
++    return verifyCapAt(slots, verify_rows);
++}
++
++pub fn verifyCapAt(slots: usize, rows: usize) u32 {
++    const n: usize = @min(@max(slots, 1), max_slots);
++    return @intCast(perSlot(rows) * n);
++}
++
++pub fn maxVerify() !?u32 {
++    const n = try @import("sys").environment.read(?u64, "TF_GLM_GRAPH_MAX", null);
++    return if (n) |v| (if (v == 0) null else @intCast(v)) else null;
++}
++
++pub fn maxSharedVerify() !u32 {
++    const n = try @import("sys").environment.read(?u64, "TF_GLM_SHARED_GRAPH_MAX", null);
++    return if (n) |v| (if (v == 0) 256 else @intCast(v)) else default_shared_cap;
++}
++
++pub fn cappedVerify(slots: usize, rows: usize, max_verify: ?u32) u32 {
++    const cap = verifyCapAt(slots, rows);
++    return if (max_verify) |m| @min(cap, m) else cap;
++}
++
++pub const Graphs = struct {
++    gpa: std.mem.Allocator,
++    mode: Mode,
++    rank: usize,
++    engine: gc.CudaEngine,
++    draft: gc.Cache(DraftKey),
++    verify: gc.Cache(VerifyKey),
++    shared_verify: ?gc.Cache(SharedVerifyKey) = null,
++    draft_print: u64,
++    verify_print: u64,
++    shared_verify_print: u64 = 0,
++    check: ?Check = null,
++    slots: [max_slots]usize = @splat(0),
++    nslots: usize = 0,
++    max_verify: ?u32 = null,
++    mib: f64 = 0,
++    steps: u64 = 0,
++    stats: struct { draft_eager: u64 = 0, verify_eager: u64 = 0, shared_eager: u64 = 0, checked: u64 = 0, differed: u64 = 0 } = .{},
++    draft_why: ?[]const u8 = null,
++    verify_why: ?[]const u8 = null,
++    shared_why: ?[]const u8 = null,
++    rows: usize = verify_rows,
++    taps: bool = false,
++    block: ?gc.Cache(BlockKey) = null,
++    block_eager: u64 = 0,
++
++    const Check = struct {
++        dev: cuda.DeviceBuffer,
++        host: cuda.HostBuffer,
++        keep: usize,
++        half: usize,
++        vocab: usize,
++    };
++
++    const Buffers = @import("cuda_state.zig").Buffers;
++
++    pub fn init(gpa: std.mem.Allocator, d: *const cuda.Driver, mode: Mode, rank: usize, bm: *const Buffers, bd: *const Buffers, bs: ?*const Buffers, hidden: usize, vocab: usize, drafter: bool) !*Graphs {
++        std.debug.assert(mode != .off);
++        floor_gib = floorFrom(if (std.c.getenv("TF_GLM_GRAPH_FLOOR_GIB")) |v| std.mem.span(v) else null) catch |e| {
++            std.log.err("TF_GLM_GRAPH_FLOOR_GIB: a GiB count, 0 or more", .{});
++            return e;
++        };
++        const g = try gpa.create(Graphs);
++        errdefer gpa.destroy(g);
++        g.* = .{
++            .gpa = gpa,
++            .mode = mode,
++            .rank = rank,
++            .engine = .{ .d = d },
++            .draft = undefined,
++            .verify = undefined,
++            .draft_print = gc.fingerprintOf(&.{ bm.ids, bm.hin, bm.mx, bm.fnormed, bm.logits, bm.gathered }),
++            .verify_print = gc.fingerprintOf(&.{ bd.ids, bd.x, bd.normed, bd.hidden, bd.fnormed, bd.logits, bd.gathered }),
++        };
++        g.taps = drafter and try @import("sys").environment.read(bool, "TF_GLM_GRAPH_TAPS", false);
++        if (g.taps) g.rows = tap_rows;
++        g.max_verify = try maxVerify();
++        g.draft = gc.Cache(DraftKey).init(gpa, g.engine.engine(), cacheSettings(16));
++        g.draft.name = "glm draft";
++        g.draft.meter = memAvailableGiB;
++        g.draft.room = room;
++        errdefer g.draft.deinit();
++        g.verify = gc.Cache(VerifyKey).init(gpa, g.engine.engine(), cacheSettings(cappedVerify(1, g.rows, g.max_verify)));
++        g.verify.name = "glm verify";
++        g.verify.meter = memAvailableGiB;
++        g.verify.room = room;
++        errdefer g.verify.deinit();
++        if (bs) |sb| if (try @import("sys").environment.read(bool, "TF_GLM_SHARED_GRAPHS", true)) {
++            const scap = try maxSharedVerify();
++            g.shared_verify_print = gc.fingerprintOf(&.{ sb.ids, sb.x, sb.normed, sb.hidden, sb.fnormed, sb.logits, sb.gathered });
++            g.shared_verify = gc.Cache(SharedVerifyKey).init(gpa, g.engine.engine(), cacheSettings(scap));
++            g.shared_verify.?.name = "glm shared verify";
++            g.shared_verify.?.meter = memAvailableGiB;
++            g.shared_verify.?.room = room;
++            if (rank == 0) std.log.info("glm: TF_GLM_SHARED_GRAPHS=1: multi-stream shared verify windows of 1-{d} rows graphed (cap {d} graphs/rank)", .{ shared_verify_rows, scap });
++        };
++        errdefer if (g.shared_verify) |*sv| sv.deinit();
++        if (g.max_verify) |m| if (rank == 0) std.log.info("glm: TF_GLM_GRAPH_MAX={d}: verify graph cache capped at {d} graphs a rank", .{ m, m });
++        if (mode == .check) {
++            const keep = hidden * 2;
++            const check_rows = @max(g.rows, if (g.shared_verify != null) shared_verify_rows else g.rows);
++            const half = check_rows * ((vocab + hidden) * 2 + if (g.taps) tap_row else 0);
++            const dev = try cuda.DeviceBuffer.alloc(d, keep + 2 * half);
++            errdefer {
++                var x = dev;
++                x.free();
++            }
++            g.check = .{ .dev = dev, .host = try cuda.HostBuffer.alloc(d, 2 * half), .keep = keep, .half = half, .vocab = vocab };
++        }
++        if (drafter and try @import("sys").environment.read(bool, "TF_GLM_DRAFT_GRAPHS", false)) {
++            g.block = gc.Cache(BlockKey).init(gpa, g.engine.engine(), cacheSettings(2 * block_streams + ingest_rows));
++            g.block.?.name = "glm drafter";
++            g.block.?.meter = memAvailableGiB;
++            g.block.?.room = room;
++            if (rank == 0) std.log.info("glm: TF_GLM_DRAFT_GRAPHS=1: DFlash2's block passes of 1-{d} streams and ingests of 1-{d} rows as CUDA graphs", .{ block_streams, ingest_rows });
++        }
++        if (g.taps and rank == 0) std.log.info("glm: TF_GLM_GRAPH_TAPS=1: DFlash2's lone (1-{d} rows) and shared (1-{d} rows) verify taps are graphed", .{ g.rows, shared_verify_rows });
++        return g;
++    }
++
++    pub fn deinit(g: *Graphs) void {
++        if (g.steps > 0) g.report();
++        g.draft.deinit();
++        g.verify.deinit();
++        if (g.shared_verify) |*sv| sv.deinit();
++        if (g.block) |*b| b.deinit();
++        if (g.check) |*c| {
++            c.dev.free();
++            c.host.free();
++        }
++        g.gpa.destroy(g);
++    }
++
++    const DraftBody = struct {
++        f: *const fw.Forward,
++        h: u64,
++        fn run(ctx: *anyopaque, _: cuda.Stream) anyerror!void {
++            const s: *const DraftBody = @ptrCast(@alignCast(ctx));
++            try s.f.mtpGraphed(s.h);
++        }
++    };
++
++    const VerifyBody = struct {
++        f: *const fw.Forward,
++        rows: usize,
++        fn run(ctx: *anyopaque, _: cuda.Stream) anyerror!void {
++            const s: *const VerifyBody = @ptrCast(@alignCast(ctx));
++            try s.f.launches(s.rows);
++        }
++    };
++
++    pub fn drafterPass(g: *Graphs, e: anytype, key: BlockKey, print: u64, body: gc.Body, outs: []const [2]u64) !bool {
++        const b = if (g.block) |*b| b else return false;
++        if (key.n == 0 or key.n > (if (key.ingest) ingest_rows else block_streams)) {
++            g.block_eager += 1;
++            return false;
++        }
++        const c = g.check orelse {
++            g.note(try b.run(key, e.stream, print, body), b.stats.capture_mib);
++            return true;
++        };
++        var n: usize = 0;
++        for (outs) |o| n += o[1];
++        if (n > c.half) return error.DrafterCheckTooWide;
++        g.note(try b.run(key, e.stream, print, body), b.stats.capture_mib);
++        try g.snap(e, 0, outs);
++        try body.run(body.ctx, e.stream);
++        try g.snap(e, 1, outs);
++        try g.compare(e, if (key.ingest) "drafter ingest" else "drafter pass", key.n, key, 0, 0, n);
++        return true;
++    }
++
++    pub fn step(g: *Graphs, f: *const fw.Forward, ids: []const i32, hidden: u64) !void {
++        if (try draftEagerBecause(f, ids.len)) |why| {
++            g.eager(&g.stats.draft_eager, &g.draft_why, "draft steps", why);
++            return f.mtp(ids, &.{hidden});
++        }
++        const r = f.ranks[0];
++        try f.mtpReady(r, ids);
++        const key = draftKey(r.st.mtp_caches, r.w.mtp.?.layer.mixer.mla, r.b.nch, r.st.mtp_len);
++        var s: DraftBody = .{ .f = f, .h = hidden };
++        const body: gc.Body = .{ .ctx = &s, .run = DraftBody.run };
++        const c = g.check orelse return g.note(try g.draft.run(key, f.stream, g.draft_print, body), g.draft.stats.capture_mib);
++        const D = c.keep;
++        const outs = [_][2]u64{ .{ r.b.logits, c.vocab * 2 }, .{ r.b.fnormed, D } };
++        try copy(f, c.dev.ptr, hidden, D);
++        g.note(try g.draft.run(key, f.stream, g.draft_print, body), g.draft.stats.capture_mib);
++        try g.snap(f, 0, &outs);
++        try copy(f, hidden, c.dev.ptr, D);
++        try f.mtpGraphed(hidden);
++        try g.snap(f, 1, &outs);
++        try g.compare(f, "draft step", r.st.mtp_len, key, outs[0][1], outs[0][1] + outs[1][1], outs[0][1] + outs[1][1]);
++    }
++
++    pub fn window(g: *Graphs, f: *const fw.Forward, ids: []const i32) !void {
++        if (try verifyEagerAt(f, ids.len, g.rows, g.taps)) |why| {
++            g.eager(&g.stats.verify_eager, &g.verify_why, "verify windows", why);
++            return f.run(ids);
++        }
++        const r = f.ranks[0];
++        const R = ids.len;
++        try f.runReady(ids);
++        g.admit(@intFromPtr(r.st));
++        const role: kv_attn.Role = if (f.kv) |kv| kv_attn.role(r.st.hold, kv.rank) else .local;
++        var key = verifyKeySharded(r.st.caches, r.st.cur, firstMla(r.w.layers), r.b.nch, r.st.pos, R, @intFromPtr(r.st), role);
++        if (f.taps) |t| key.taps = t.out;
++        var s: VerifyBody = .{ .f = f, .rows = R };
++        const body: gc.Body = .{ .ctx = &s, .run = VerifyBody.run };
++        const c = g.check orelse return g.note(try g.verify.run(key, f.stream, g.verify_print, body), g.verify.stats.capture_mib);
++        const D = c.keep;
++        const tapped: [2]u64 = if (f.taps) |t| .{ t.out, R * tap_row } else .{ 0, 0 };
++        const all = [_][2]u64{ .{ r.b.logits, R * c.vocab * 2 }, .{ r.b.fnormed, R * D }, tapped };
++        const outs = all[0 .. if (f.taps != null) 3 else 2];
++        g.note(try g.verify.run(key, f.stream, g.verify_print, body), g.verify.stats.capture_mib);
++        try g.snap(f, 0, outs);
++        try f.launches(R);
++        try g.snap(f, 1, outs);
++        try g.compare(f, "verify window", r.st.pos, key, all[0][1], all[0][1] + all[1][1], all[0][1] + all[1][1] + tapped[1]);
++    }
++
++    /// Forward.run(ids) of a multi-stream shared verify window (Engine.verifyShared) through its CUDA graph cache.
++    pub fn sharedWindow(g: *Graphs, f: *const fw.Forward, ids: []const i32) !void {
++        const sv = if (g.shared_verify) |*x| x else {
++            g.eager(&g.stats.shared_eager, &g.shared_why, "shared verify windows", "TF_GLM_SHARED_GRAPHS=0");
++            return f.run(ids);
++        };
++        if (sharedEagerAt(f, ids.len, g.taps)) |why| {
++            g.eager(&g.stats.shared_eager, &g.shared_why, "shared verify windows", why);
++            return f.run(ids);
++        }
++        const r = f.ranks[0];
++        const R = ids.len;
++        try f.runReady(ids);
++        const taps_ptr: u64 = if (f.taps) |t| t.out else 0;
++        const key = sharedVerifyKey(r.segs, firstMla(r.w.layers), r.b.nch, if (f.kv) |kv| kv.rank else g.rank, f.kv != null, taps_ptr);
++        var s: VerifyBody = .{ .f = f, .rows = R };
++        const body: gc.Body = .{ .ctx = &s, .run = VerifyBody.run };
++        const c = g.check orelse return g.note(try sv.run(key, f.stream, g.shared_verify_print, body), sv.stats.capture_mib);
++        const D = c.keep;
++        const tapped: [2]u64 = if (f.taps) |t| .{ t.out, R * tap_row } else .{ 0, 0 };
++        const all = [_][2]u64{ .{ r.b.logits, R * c.vocab * 2 }, .{ r.b.fnormed, R * D }, tapped };
++        const outs = all[0 .. if (f.taps != null) 3 else 2];
++        g.note(try sv.run(key, f.stream, g.shared_verify_print, body), sv.stats.capture_mib);
++        try g.snap(f, 0, outs);
++        try f.launches(R);
++        try g.snap(f, 1, outs);
++        try g.compare(f, "shared verify window", R, key, all[0][1], all[0][1] + all[1][1], all[0][1] + all[1][1] + tapped[1]);
++    }
++
++    fn eager(g: *Graphs, count: *u64, first: *?[]const u8, kind: []const u8, why: []const u8) void {
++        count.* += 1;
++        if (first.* != null) return;
++        first.* = why;
++        std.log.info("glm graphs rank {d}: {s} eager: {s} (the first; counts follow in the graphs line)", .{ g.rank, kind, why });
++    }
++
++    fn admit(g: *Graphs, state: usize) void {
++        for (g.slots[0..g.nslots]) |s| if (s == state) return;
++        if (g.nslots == max_slots) return;
++        g.slots[g.nslots] = state;
++        g.nslots += 1;
++        const cap = cappedVerify(g.nslots, g.rows, g.max_verify);
++        if (g.verify.settings.max == 0) return;
++        if (g.verify.cap == g.verify.settings.max) g.verify.cap = cap;
++        g.verify.settings.max = cap;
++    }
++
++    fn note(g: *Graphs, out: gc.Outcome, capture_mib: f64) void {
++        if (out == .captured) g.mib += capture_mib;
++        g.steps += 1;
++        if ((g.steps >= 64 and g.steps & (g.steps - 1) == 0) or g.steps % 8192 == 0) g.report();
++    }
++
++    pub fn report(g: *const Graphs) void {
++        const d = g.draft.stats;
++        const v = g.verify.stats;
++        std.log.info("glm graphs rank {d}: {d} steps; draft {d} captured, {d} replayed, {d} eager; verify {d} captured, {d} replayed, {d} eager ({d} slots, cap {d}); captures {d:.0} MiB; {d} floor hits ({d:.1} GiB)", .{
++            g.rank, g.steps, d.captured, d.replayed, d.eager + g.stats.draft_eager, v.captured, v.replayed, v.eager + g.stats.verify_eager, g.nslots, g.verify.cap, g.mib, d.floor_hits + v.floor_hits, floor_gib,
++        });
++        if (g.shared_verify) |sv| std.log.info("glm graphs rank {d}: shared verify {d} captured, {d} replayed, {d} eager, {d} evicted (cap {d})", .{ g.rank, sv.stats.captured, sv.stats.replayed, sv.stats.eager + g.stats.shared_eager, sv.stats.evicted, sv.cap });
++        if (g.block) |b| std.log.info("glm graphs rank {d}: drafter {d} captured, {d} replayed, {d} eager ({d} past graphed sizes)", .{ g.rank, b.stats.captured, b.stats.replayed, b.stats.eager + g.block_eager, g.block_eager });
++    }
++
++    fn copy(f: anytype, dst: u64, src: u64, bytes: usize) !void {
++        try f.d.check(f.d.api.cuMemcpyDtoDAsync_v2(dst, src, bytes, f.stream.handle), "cuMemcpyDtoDAsync");
++    }
++
++    fn snap(g: *Graphs, f: anytype, which: usize, outs: []const [2]u64) !void {
++        const c = g.check.?;
++        var at = c.dev.ptr + c.keep + which * c.half;
++        for (outs) |o| {
++            if (o[1] == 0) continue;
++            try copy(f, at, o[0], o[1]);
++            at += o[1];
++        }
++    }
++
++    fn compare(g: *Graphs, f: anytype, what: []const u8, pos: usize, key: anytype, split: usize, split2: usize, n: usize) !void {
++        const c = g.check.?;
++        const d = f.d;
++        try d.check(d.api.cuMemcpyDtoHAsync_v2(c.host.bytes.ptr, c.dev.ptr + c.keep, c.half, f.stream.handle), "cuMemcpyDtoHAsync");
++        try d.check(d.api.cuMemcpyDtoHAsync_v2(c.host.bytes.ptr + c.half, c.dev.ptr + c.keep + c.half, c.half, f.stream.handle), "cuMemcpyDtoHAsync");
++        try f.stream.synchronize();
++        const a = c.host.bytes[0..n];
++        const b = c.host.bytes[c.half..][0..n];
++        g.stats.checked += 1;
++        if (std.mem.indexOfDiff(u8, a, b)) |at| {
++            g.stats.differed += 1;
++            std.log.err("glm graphs check: {s} at {d} (key {any}) differs from eager at byte {d} of {d} ({s}); {d} of {d} checked differ", .{ what, pos, key, at, n, if (split2 == 0) "outputs" else if (at < split) "logits" else if (at < split2) "hidden" else "taps", g.stats.differed, g.stats.checked });
++        } else if (g.stats.checked & (g.stats.checked - 1) == 0) {
++            const sv_cap = if (g.shared_verify) |sv| sv.stats.captured else 0;
++            const sv_rep = if (g.shared_verify) |sv| sv.stats.replayed else 0;
++            std.log.info("glm graphs check: {d} steps graph = eager bit for bit (verify {d}/{d}; shared {d}/{d})", .{ g.stats.checked, g.verify.stats.captured, g.verify.stats.replayed, sv_cap, sv_rep });
++        }
++    }
++};
++
++test "glm graphs: TF_GLM_GRAPHS reads 0, 1 and check, nothing else" {
++    try std.testing.expectEqual(Mode.off, parse("0").?);
++    try std.testing.expectEqual(Mode.on, parse("1").?);
++    try std.testing.expectEqual(Mode.check, parse("check").?);
++    for ([_][]const u8{ "2", "on", "true", "CHECK", "01", "" }) |v| try std.testing.expect(parse(v) == null);
++}
++
++test "glm graphs: sharded role, latent page table, and shared segment changes produce distinct keys" {
++    var l: dsa_block.Layer = undefined;
++    l.dense_limit = 2048;
++    const base_c: dsa_block.Caches = .{ .lc = 0x1000, .ls = 0x1800, .ik = 0x2000, .ig = 0x3000, .pk = 0x4000, .pk_rows = 131074, .pt = 0x5000, .ps = 1024 * 512, .lpt = 0x6000, .lps = 512 * 516 };
++    var caches0 = [_]dsa_block.Caches{base_c};
++    var caches1 = [_]dsa_block.Caches{base_c};
++    caches1[0].lpt = 0x7000;
++    var cur0 = [_]u1{0};
++    var cur1 = [_]u1{0};
++    // Lone key changes on sharded role or latent page table
++    const k_take = verifyKeySharded(&caches0, &cur0, l, 9, 4000, 8, 0x100, .take);
++    const k_give = verifyKeySharded(&caches0, &cur0, l, 9, 4000, 8, 0x100, .give);
++    const k_lpt = verifyKeySharded(&caches1, &cur0, l, 9, 4000, 8, 0x100, .take);
++    try std.testing.expect(!std.meta.eql(k_take, k_give));
++    try std.testing.expect(!std.meta.eql(k_take, k_lpt));
++    // Shared key changes on KDA parity flip, sharded ownership change, or shape change
++    var st0: fw.State = undefined;
++    st0.caches = &caches0;
++    st0.cur = &cur0;
++    st0.pos = 4000;
++    st0.hold = .{ .owner = 0, .twin = false };
++    var st1: fw.State = undefined;
++    st1.caches = &caches1;
++    st1.cur = &cur1;
++    st1.pos = 4000;
++    st1.hold = .{ .owner = 1, .twin = false };
++    const segs = [_]fw.Seg{ .{ .st = &st0, .row0 = 0, .rows = 8 }, .{ .st = &st1, .row0 = 8, .rows = 8 } };
++    const sk0 = sharedVerifyKey(&segs, l, 9, 0, true, 0xabc);
++    const sk_same = sharedVerifyKey(&segs, l, 9, 0, true, 0xabc);
++    try std.testing.expect(std.meta.eql(sk0, sk_same));
++    cur0[0] = 1;
++    try std.testing.expect(!std.meta.eql(sk0, sharedVerifyKey(&segs, l, 9, 0, true, 0xabc)));
++    cur0[0] = 0;
++    st0.hold = .{ .owner = 0, .twin = true };
++    try std.testing.expect(!std.meta.eql(sk0, sharedVerifyKey(&segs, l, 9, 0, true, 0xabc)));
++    st0.hold = .{ .owner = 0, .twin = false };
++    st1.pos = 9000;
++    try std.testing.expect(!std.meta.eql(sk0, sharedVerifyKey(&segs, l, 9, 0, true, 0xabc)));
++}
+diff --git a/zig/src/families/glm/cuda_images.zig b/zig/src/families/glm/cuda_images.zig
+index b4d864246..a9907b76d 100644
+--- a/zig/src/families/glm/cuda_images.zig
++++ b/zig/src/families/glm/cuda_images.zig
+@@ -195,6 +195,12 @@ pub const Images = struct {
+         return n;
+     }
+ 
++    /// Whether rows [lo, hi) of `slot` cross an image span: `splice` then does device work, else none.
++    pub fn crosses(v: *Images, slot: u32, lo: usize, hi: usize) !bool {
++        try v.activate(slot);
++        return spansCross(v.spans.items, lo, hi);
++    }
++
+     /// Prompt rows [lo, hi) of `slot`, embedded at `emb` in `copies` streams, take the image rows they cross.
+     pub fn splice(v: *Images, s: cuda.Stream, slot: u32, lo: usize, hi: usize, emb: u64, copies: usize) !void {
+         try v.activate(slot);
+@@ -235,6 +241,12 @@ pub const Images = struct {
+     }
+ };
+ 
++/// Whether [lo, hi) intersects any span in `spans`.
++pub fn spansCross(spans: []const Span, lo: usize, hi: usize) bool {
++    for (spans) |sp| if (lo < sp.at + sp.n and hi > sp.at) return true;
++    return false;
++}
++
+ /// Rank 0 with a checkpoint that reads videos: when no video library loads, the rows set aside for them say so.
+ fn noteVideo(a: std.mem.Allocator, io: std.Io, tokens: u32) void {
+     if (tokens <= 64) return; // the flag's floor
+diff --git a/zig/src/families/glm/cuda_ranks.zig b/zig/src/families/glm/cuda_ranks.zig
+index 9d0278b91..ee4248b85 100644
+--- a/zig/src/families/glm/cuda_ranks.zig
++++ b/zig/src/families/glm/cuda_ranks.zig
+@@ -5,6 +5,7 @@ const cuda = @import("cuda");
+ const heat = @import("heat");
+ const l2pf = @import("cuda_l2pf.zig");
+ const kv_shard = @import("cuda_kv_shard.zig");
++const graphs_mod = @import("cuda_graphs.zig");
+ const Sha256 = std.crypto.hash.sha2.Sha256;
+ 
+ /// The forward's knobs a rank reads from its environment (the Python family's names and defaults).
+@@ -33,6 +34,7 @@ pub const Settings = struct {
+     kv_live_half: bool = false, // TF_GLM_KV_LIVE_HALF=1: a keep carries the live KDA half alone (cuda_snapshot_layout.zig)
+     kv_shard: kv_shard.Switches = .{}, // TF_GLM_KV_SHARD and its knobs: each stream's latent rows on one rank
+     numerics: Numerics = .{}, // opt-in prompt kernels that round differently (TF_GLM_ABSORB_MMA)
++    graphs: graphs_mod.Mode = .off, // TF_GLM_GRAPHS: 0 (off), 1 (on), check (bit-for-bit vs eager)
+ 
+     /// The settings `get` gives, blank text as unset; `problem` names a value that is not one of the choices.
+     pub fn read(comptime get: *const fn ([:0]const u8) ?[]const u8, problem: *[]const u8) !Settings {
+@@ -157,6 +159,12 @@ pub const Settings = struct {
+                 return error.BadSetting;
+             }
+         }
++        if (get("TF_GLM_GRAPHS")) |v| {
++            s.graphs = graphs_mod.parse(v) orelse {
++                problem.* = "TF_GLM_GRAPHS: 0, 1 or check";
++                return error.BadSetting;
++            };
++        }
+         if (s.prompt_fixed_k and !s.tiled) {
+             problem.* = "TF_GLM_PROMPT_K=shape requires TF_GLM_MM=1";
+             return error.BadSetting;
+@@ -230,7 +238,7 @@ fn wireOpens(get: *const fn ([:0]const u8) ?[]const u8) bool {
+ 
+ /// What every rank must agree on, as bytes the communicator carries.
+ pub const Fingerprint = extern struct {
+-    layout: u32 = 23, // this struct's version (22 had no numerics word)
++    layout: u32 = 24, // this struct's version (23 had no graphs word)
+     world: u32,
+     rank: u32,
+     kv8: u32 = 0,
+@@ -259,6 +267,7 @@ pub const Fingerprint = extern struct {
+     kv_shard: u32 = 0, // TF_GLM_KV_SHARD and _CARRY, _TWINS (kv_shard.Switches.word; 0: off)
+     kv_shard_check: u32 = 0, // TF_GLM_KV_SHARD_CHECK when on (0 off)
+     numerics: u32 = 0, // Settings.numerics: every rank's prompt kernels round alike
++    graphs: u32 = 0, // TF_GLM_GRAPHS: check runs every step twice, so every rank must agree
+     capacity: u64, // tokens a sequence holds
+     heat_high: f64, // the heat bands in degrees (0 and 0: off): every rank must wait alike
+     heat_low: f64,
+@@ -297,6 +306,7 @@ pub const Fingerprint = extern struct {
+         kv_shard,
+         kv_shard_check,
+         numerics,
++        graphs,
+         capacity,
+         heat_high,
+         heat_low,
+@@ -341,6 +351,7 @@ pub const Fingerprint = extern struct {
+             .kv_shard = s.kv_shard.word(),
+             .kv_shard_check = s.kv_shard.checkWord(),
+             .numerics = s.numerics.bits(),
++            .graphs = @intFromEnum(s.graphs),
+             .capacity = capacity,
+             .heat_high = if (s.heat) |b| b.high_c else 0,
+             .heat_low = if (s.heat) |b| b.low_c else 0,
+@@ -387,6 +398,7 @@ pub fn mismatch(all: []const Fingerprint) ?Mismatch {
+             "kv_shard",
+             "kv_shard_check",
+             "numerics",
++            "graphs",
+             "capacity",
+             "heat_high",
+             "heat_low",
+@@ -515,6 +527,7 @@ fn explain(f: Fingerprint.Field) []const u8 {
+         .kv_shard => "TF_GLM_KV_SHARD, TF_GLM_KV_SHARD_CARRY or TF_GLM_KV_SHARD_TWINS",
+         .kv_shard_check => "TF_GLM_KV_SHARD_CHECK",
+         .numerics => "TF_GLM_ABSORB_MMA",
++        .graphs => "TF_GLM_GRAPHS",
+         .capacity => "the sequence capacity (the context)",
+         .heat_high => "TF_HEAT_HIGH",
+         .heat_low => "TF_HEAT_LOW",
+diff --git a/zig/src/families/glm/dflash.zig b/zig/src/families/glm/dflash.zig
+index aa039ffc2..509e0fd86 100644
+--- a/zig/src/families/glm/dflash.zig
++++ b/zig/src/families/glm/dflash.zig
+@@ -257,7 +257,38 @@ pub const Drafter = struct {
+         }
+         try block.upload(dr, e, dr.cpos, std.mem.sliceAsBytes(dr.h_cpos[0..N]));
+         try block.upload(dr, e, dr.crings, std.mem.sliceAsBytes(dr.h_crings[0..N]));
+-        try block.ingestPass(dr, e, N);
++        try dr.launch(e, true, N, false);
++    }
++
++    /// TF_GLM_DRAFT_GRAPHS: an ingest of `n` rows or a block pass of `n` streams through the engine's drafter graphs,
++    /// else eagerly. Inputs are uploaded to fixed buffers carved at load.
++    fn launch(dr: *Drafter, e: anytype, is_ingest: bool, n: usize, rank0: bool) !void {
++        const Body = struct {
++            dr: *Drafter,
++            e: @TypeOf(e),
++            ingest: bool,
++            n: usize,
++            rank0: bool,
++            fn run(ctx: *anyopaque, _: cuda.Stream) anyerror!void {
++                const s: *const @This() = @ptrCast(@alignCast(ctx));
++                if (s.ingest) try block.ingestPass(s.dr, s.e, s.n) else try block.pass(s.dr, s.e, s.n, s.rank0);
++            }
++        };
++        var s: Body = .{ .dr = dr, .e = e, .ingest = is_ingest, .n = n, .rank0 = rank0 };
++        const body: cuda.graph_cache.Body = .{ .ctx = &s, .run = Body.run };
++        if (comptime @hasField(@TypeOf(e.*), "graphs")) {
++            if (e.graphs) |g| if (n <= std.math.maxInt(u16)) {
++                const M = n * BLOCK;
++                const nw = M * CW;
++                const outs = if (is_ingest)
++                    [_][2]u64{ .{ dr.ctx, n * D * 2 }, .{ dr.ckv, n * 2 * KVW * 2 } }
++                else
++                    [_][2]u64{ .{ dr.gtk, dr.world * nw * 4 }, .{ dr.g, if (rank0) M * RANK * 4 else 0 } };
++                const print = cuda.graph_cache.fingerprintOf(&.{ dr.weights.ptr, dr.ids, dr.x, dr.gtk, dr.g, dr.cin, dr.ctx, dr.ckv, dr.rings, dr.crings });
++                if (try g.drafterPass(e, .{ .ingest = is_ingest, .n = @intCast(n), .rank0 = rank0 }, print, body, &outs)) return;
++            };
++        }
++        try body.run(body.ctx, e.stream);
+     }
+ 
+     /// Kept rows into each context, then the block pass for every stream (every rank); rank 0 selects 7 drafts each.
+@@ -302,7 +333,7 @@ pub const Drafter = struct {
+         try block.upload(dr, e, dr.froms, std.mem.sliceAsBytes(dr.h_froms[0..S]));
+         const rank0 = active[0].out != null;
+         tm = try dr.mark(e, .{ tm, 1 });
+-        try block.pass(dr, e, S, rank0);
++        try dr.launch(e, false, S, rank0);
+         tm = try dr.mark(e, .{ tm, 2 });
+         if (rank0) {
+             try block.download(dr, e, std.mem.sliceAsBytes(dr.cand[0..@import("dflash_candidates.zig").Layout.init(dr.world, M, CW).read]), dr.gtk);
+diff --git a/zig/src/platform/environment.zig b/zig/src/platform/environment.zig
+index 23c5d4d2f..fb38922c4 100644
+--- a/zig/src/platform/environment.zig
++++ b/zig/src/platform/environment.zig
+@@ -119,7 +119,12 @@ pub const rules = [_]Rule{
+     .{ .name = "TF_GLM_DRAFT_ONLY_HEAD", .scope = .glm, .kind = .flag, .forms = "0 or 1" },
+     .{ .name = "TF_GLM_DRAFT_DOWN8", .scope = .glm, .kind = .flag, .forms = "0 or 1" },
+     .{ .name = "TF_GLM_FAST_LOAD", .scope = .glm, .kind = .flag, .forms = "0 or 1" },
++    .{ .name = "TF_GLM_GRAPH_TAPS", .scope = .glm, .kind = .flag, .forms = "0 or 1" },
++    .{ .name = "TF_GLM_DRAFT_GRAPHS", .scope = .glm, .kind = .flag, .forms = "0 or 1" },
++    .{ .name = "TF_GLM_SHARED_GRAPHS", .scope = .glm, .kind = .flag, .forms = "0 or 1" },
+     .{ .name = "TF_GLM_DFLASH2_LOG", .scope = .glm, .kind = .u64, .forms = "a whole unsigned 64-bit round count (0 logs no drafts)" },
++    .{ .name = "TF_GLM_GRAPH_MAX", .scope = .glm, .kind = .u64, .forms = "a whole unsigned 64-bit verify graph cap (0 uses default per-slot cap)" },
++    .{ .name = "TF_GLM_SHARED_GRAPH_MAX", .scope = .glm, .kind = .u64, .forms = "a whole unsigned 64-bit shared verify graph cap (default 32)" },
+     .{ .name = "TF_GLM_DRAFT_CONFIDENCE", .scope = .glm, .kind = .real, .max = 1, .forms = "a finite chain-chance cut from 0 to 1 (default 0.7)" },
+     // 2^31 - 32: GLM's slots, the window and its 32 verify rows (glm/cuda_native.zig's capacity), keep i32 positions
+     .{ .name = "TF_GLM_CONTEXT_CEILING", .scope = .glm, .kind = .u64, .first_digit = true, .min = 1, .max = 2147483616, .forms = "a whole token count from 1 to 2147483616 (the window GLM-5.3-Flash may serve in place of config.json's)" },

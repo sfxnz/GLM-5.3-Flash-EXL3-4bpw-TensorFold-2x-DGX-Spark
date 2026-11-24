@@ -2,26 +2,60 @@ GLM-5.3-Flash-EXL3-4bpw-TensorFold-2x-DGX-Spark
 Copyright 2026 sfxnz
 https://github.com/sfxnz/GLM-5.3-Flash-EXL3-4bpw-TensorFold-2x-DGX-Spark
 
-This recipe's own files are MIT-licensed (LICENSE). One part contains lines from another project:
+This recipe's own scripts, documentation, tests, and original glue are MIT-licensed (LICENSE).
+Two directories contain patches against third-party projects under those projects' licenses:
 
-- quality/patches/0001-mcg-marker-rank1.patch, quality/patches/0002-drop-private-shard-pages.patch
-  Our changes to malaiwah/quant-fidelity-suite at cf36287c51a18e9361e009ca00a21eb8c0021ab1. The diff context lines
-  are that project's code. Its LICENSE: "MIT License" / "Copyright (c) 2026 Michel Belleau".
+- engine-patches/ (Apache-2.0)
+  Patch series against ashhart/TensorFold at commit 81de26f649677aa72ae0034d4af6e010cd947038
+  (Apache-2.0, https://github.com/ashhart/TensorFold). Includes upstream commits and clean ports
+  of Apache-2.0 patches with original author attribution preserved in commit headers:
+  * Ash Hart and TensorFold contributors (Apache-2.0, https://github.com/ashhart/TensorFold):
+    prefill skip / in-place partial / local indexer / dependent-launch prologue commits (0026-0030).
+  * MiaAI-Lab (Apache-2.0, https://github.com/MiaAI-Lab):
+    E4M3 KV pages, mixed EXL3 widths, server guards, tensor-core ABSORB_MMA (0041), packed prompt
+    glm_mm (0009+0080), EXL3 prompt K12 main loop (0078), sparse in-kernel merge (0068), KDA
+    step2/4 (0084), 4-bit read-once decode + PDL chain (0081+0082), 6-stage decode glm_mm (0100),
+    two-problem 6-stage glm_mm (0073), fused router+topk+group (0074), batched shared/sharded
+    decode (0075+0088), split HC finish/partial with PDL (0086+0089+0090), GB10 cost tables (0096),
+    batched top-1 rows (0072), shared profiler (0099).
+  * Robert Wojciechowski (@wojo / @rwojo, Apache-2.0):
+    TF_GLM_KV_SHARD per-rank sharded E4M3 KV latents, twins, and carry (patch 0013 / GLM 0118).
+  * Aevonix (Apache-2.0):
+    EXL3 prompt K12 LOP3 mcg2 and FFMA fwht128f reference (0020 / patch 0073).
+  * Bizuayeu (Apache-2.0):
+    TF_GLM_DSCORES decode window DSA index score kernels (0022-0024).
+  * ultradaoto (Apache-2.0):
+    TF_GLM_MOE_DIRECT direct EXL3 MoE decode without row copies (0025).
+  * SvangenStudios (Apache-2.0):
+    Lane reply grammar cleanup on failed stream open (0007).
+  * sfxnz (Apache-2.0 in engine-patches/):
+    VEC8 16-byte cp.async FP8 MLA, TF_GLM_FAST_LOAD parallel pinned upload + GPU dense quantization,
+    TF_GLM_DRAFT_ONLY_HEAD + TF_GLM_DRAFT_DOWN8 TP-split DFlash2, TF_GLM_GRAPHS lone/shared verify +
+    DFlash2 drafter CUDA graphs, zero-thrash device-table contiguous .give 1-send/1-recv KV_SHARD,
+    batched sampled drawShared, and native zero-copy per-part TF_KV_SHARE over TF_GLM_KV_SHARD with
+    non-starving concurrent twin admission.
+
+- quality/patches/0001-mcg-marker-rank1.patch, quality/patches/0002-drop-private-shard-pages.patch (MIT)
+  Our changes to malaiwah/quant-fidelity-suite at cf36287c51a18e9361e009ca00a21eb8c0021ab1. The diff
+  context lines are that project's code. Its LICENSE: "MIT License" / "Copyright (c) 2026 Michel Belleau".
 
 Not included. Each user fetches these under their own terms:
-- TensorFold 1.2.5 (Apache-2.0, https://github.com/ashhart/TensorFold). docker/Dockerfile installs the release
-  archive tensorfold-1.2.5-linux-aarch64.tar.gz. Its NOTICE and THIRD_PARTY_NOTICES.md ship inside it.
-- libjpeg-turbo 3.1.4.1 and libwebp 1.6.0, which docker/Dockerfile downloads, and the Ubuntu and NVIDIA packages it
-  installs on nvidia/cuda:13.0.0-base-ubuntu24.04, each under its own license.
+- TensorFold 1.2.10 runtime archive (Apache-2.0, https://github.com/ashhart/TensorFold).
+  docker/Dockerfile installs tensorfold-1.2.10-linux-aarch64.tar.gz. Its NOTICE and THIRD_PARTY_NOTICES.md
+  ship inside it.
+- libjpeg-turbo 3.1.4.1 and libwebp 1.6.0, which docker/Dockerfile downloads, and the Ubuntu and NVIDIA
+  packages it installs on nvidia/cuda:13.0.0-base-ubuntu24.04, each under its own license.
 - exllamav3 v1.6.6 (MIT, https://github.com/turboderp-org/exllamav3), which quant/Dockerfile builds from a clone.
 - malaiwah/quant-fidelity-suite (MIT), which quality/Dockerfile builds from a clone, and the dataset
   malaiwah/glm53-flash-fidelity-root-v1 (MIT).
-- The NVIDIA PyTorch container nvcr.io/nvidia/pytorch:26.07-py3 (NVIDIA Deep Learning Container License), the base
-  of quant/Dockerfile and quality/Dockerfile.
-- The weights sfxnz/GLM-5.3-Flash-EXL3-4bpw, derived from zai-org/GLM-5.3-Flash-BF16 (MIT, Copyright (c) 2026 Z.AI
-  Co., Ltd).
+- The NVIDIA PyTorch container nvcr.io/nvidia/pytorch:26.07-py3 (NVIDIA Deep Learning Container License),
+  the base of quant/Dockerfile and quality/Dockerfile.
+- The weights sfxnz/GLM-5.3-Flash-EXL3-4bpw, derived from zai-org/GLM-5.3-Flash-BF16 (MIT, Copyright (c)
+  2026 Z.AI Co., Ltd).
+- Optional external drafter weights referenced in recipe.conf: incoai/GLM-5.3-Flash-DFlash2 at commit
+  7d74cdd881ed7e32c31175984a67823127b66cfe (CC BY-NC-ND 4.0 in that snapshot's README; later commits may
+  carry different licensing — verify before use). run.sh never downloads it; each user fetches it separately
+  under its own terms (or sets DRAFTER="" and disables TF_GLM_KV_SHARD to run target MTP drafting).
 
-Not used by default: incoai/GLM-5.3-Flash-DFlash2 (CC BY-NC-ND). run.sh never downloads it.
-
-Used only as a measured control, not redistributed: brandonmusic/GLM-5.3-Flash-tr3-4bpw, under its own attribution
-license. This repository holds none of its bytes and none of its code.
+Used only as a measured control, not redistributed: brandonmusic/GLM-5.3-Flash-tr3-4bpw, under its own
+attribution license. This repository holds none of its bytes and none of its code.

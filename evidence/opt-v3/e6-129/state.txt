@@ -1,0 +1,3 @@
+2026-11-17T20:28:34Z start head load 3.43 11.00 10.81 hot 65100 gpu 49,9.94W avail 10.3 | worker 1.33 2.47 2.38 49800 15.8
+other containers on head: none
+2026-11-17T20:41:45Z after-gated head load 6.24 5.64 7.30 hot 87100 gpu 72,59.50W avail 10.7 | worker 1.81 1.93 2.10 68900 15.8

@@ -1,0 +1,24 @@
+info: rank 1: liveness line to rank 0 connected after 8 tries
+info: glm kv selection: pool pages; TF_KV_PAGES=on (env); rank 1 of 2; cache fp8
+info: p2p: rank 1 of 2: NCCL's init log is at /tmp/tf-p2p-DKMIMB/nccl.log until startup diagnostics finish; if this rank stops before then, that file holds NCCL's last lines
+info: rank 1 startup: entering NCCL init
+info: rank 1: NCCL id cc1281aa taken
+info: rank 1 startup: entering NCCL init (2 ranks, id cc1281aa, NCCL 2.30.7, CUDA device 0 000F:01:00.0)
+info: rank 1 startup: NCCL init done in 1567 ms
+info: p2p: rank 1 of 2: GPU 0 NVIDIA GB10 (0000000F:01:00.0); driver 580.178.04, CUDA driver API 13.0, NCCL 2.30.7
+info: p2p: peer access: TensorFold enables none itself (no cuCtxEnablePeerAccess); NCCL sets up its own peers
+info: p2p: set: NCCL_PROTO=LL,Simple
+info: p2p: NCCL transport (this rank's connections): rank 0 NET/IB (128 connections)
+info: rank 1 startup: entering peer warm-up
+info: rank 1 startup: entering weights
+info: checkpoint digest: 0.0 GiB read in 0.1 s, 120/120 cached files
+info: glm_mm decode windows: 6 pipeline stages (TF_GLM_MM_STAGES)
+info: TF_GLM_MOE_DIRECT=1: a decode window's EXL3 experts read flat picks, one slot sum
+info: weights: 45 layers loaded in 23.51s (16 readers read 132.8 GiB ahead of the loader)
+info: glm: 282 linears packed (8/8 bits, gpu qtile), 3.70 GiB freed in 0.40s
+info: TF_GLM_L2PF: 176 rows, 1413 MiB a decode window, 2 CTAs a site, the gathers' sites at 150 GB/s (0: unpaced)
+info: checkpoint digest: 0.0 GiB read in 0.0 s, 1/1 cached files
+info: dflash2: drafter from /home/sfxnz/.cache/huggingface/hub/models--incoai--GLM-5.3-Flash-DFlash2/snapshots/7d74cdd881ed7e32c31175984a67823127b66cfe (Apache-2.0), linears at 4 bits, 0.45 GiB on the device
+info: RoCE all-gather: 2 ranks, 2 HCA(s), shards up to 4096 KiB by RDMA writes
+info: [tensorfold] glm: rank 1 of 2 sums through the group collective (RoCE gathers on)
+info: rank 1 startup: ready to follow rank 0

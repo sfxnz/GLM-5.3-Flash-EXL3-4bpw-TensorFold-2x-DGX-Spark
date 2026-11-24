@@ -1,0 +1,206 @@
+From 0a4dfc13e1c17a0976f41961f4e7379cff69bb18 Mon Sep 17 00:00:00 2001
+From: sfxnz <248329760+sfxnz@users.noreply.github.com>
+Date: Mon, 23 Nov 2026 14:27:58 +0000
+Subject: [PATCH 34/39] glm cuda: PDL entry prologues for fp8 paged write,
+ absorb_mma, and qtile + host test updates
+
+---
+ zig/glm_exl3_prompt_host.zig             |  7 ++---
+ zig/kernels/cuda/glm_glue_latent.cuh     |  1 +
+ zig/kernels/cuda/glm_glue_num.cuh        |  2 ++
+ zig/kernels/cuda/glm_mm.cu               | 15 ++++++++---
+ zig/src/families/glm/cuda_engine.zig     |  2 +-
+ zig/src/families/glm/cuda_exl3.zig       |  9 +++----
+ zig/src/families/glm/cuda_start_test.zig | 34 +++++++++++++-----------
+ zig/src/native/copy_drafts_cuda_test.zig |  4 +--
+ 8 files changed, 45 insertions(+), 29 deletions(-)
+
+diff --git a/zig/glm_exl3_prompt_host.zig b/zig/glm_exl3_prompt_host.zig
+index 2dd3eb811..0d1105e5d 100644
+--- a/zig/glm_exl3_prompt_host.zig
++++ b/zig/glm_exl3_prompt_host.zig
+@@ -94,10 +94,11 @@ test "GLM EXL3 prompt: a whole pass makes one expert call and no 2D copies" {
+     };
+ }
+ 
+-test "GLM EXL3 prompt: decode retains compact 1024-row calls" {
++test "GLM EXL3 prompt: decode uses 16-pair item calls without copies" {
+     try run(2048, false, false, 288);
+-    try t.expectEqual(@as(usize, 4), Record.copies);
+-    try t.expectEqual(@as(usize, 2), Record.decode);
++    try t.expectEqual(@as(usize, 0), Record.copies);
++    try t.expectEqual(@as(usize, 0), Record.decode);
++    try t.expectEqual(@as(usize, 2), Record.routes);
+     try t.expectEqual(@as(usize, 0), Record.up);
+     try t.expectEqual(@as(usize, 0), Record.down);
+ }
+diff --git a/zig/kernels/cuda/glm_glue_latent.cuh b/zig/kernels/cuda/glm_glue_latent.cuh
+index f9ebbafa6..bdfd4f196 100644
+--- a/zig/kernels/cuda/glm_glue_latent.cuh
++++ b/zig/kernels/cuda/glm_glue_latent.cuh
+@@ -105,6 +105,7 @@ extern "C" __global__ void __launch_bounds__(512)
+ extern "C" __global__ void __launch_bounds__(512)
+     tf_glm_lat_write_fp8_paged(const __nv_bfloat16* lat, int64_t stride, unsigned char* cache, float* scales,
+                                const int* pos, const int* pt, int64_t ps) {
++  glm_pdl::enter();
+   const int64_t r = blockIdx.x, at = (int64_t)pos[0] + r;
+   const int64_t page = (int64_t)pt[at / 512] * ps, row = at % 512;
+   const int d = threadIdx.x;
+diff --git a/zig/kernels/cuda/glm_glue_num.cuh b/zig/kernels/cuda/glm_glue_num.cuh
+index d5d18e7c5..937adbf87 100644
+--- a/zig/kernels/cuda/glm_glue_num.cuh
++++ b/zig/kernels/cuda/glm_glue_num.cuh
+@@ -145,6 +145,7 @@ __device__ __forceinline__ void latent_mma(const __nv_bfloat16* __restrict__ x,
+ extern "C" __global__ void __launch_bounds__(256)
+     tf_glm_latent_mma_kn(const __nv_bfloat16* x, int64_t xr, const __nv_bfloat16* w, __nv_bfloat16* out, int64_t orow,
+                          int64_t rows, int n, int k) {
++  glm_pdl::enter();
+   glm_num::latent_mma<true, 3>(x, xr, w, out, orow, rows, n, k);
+ }
+ 
+@@ -152,5 +153,6 @@ extern "C" __global__ void __launch_bounds__(256)
+ extern "C" __global__ void __launch_bounds__(256)
+     tf_glm_latent_mma_nk(const __nv_bfloat16* x, int64_t xr, const __nv_bfloat16* w, __nv_bfloat16* out, int64_t orow,
+                          int64_t rows, int n, int k) {
++  glm_pdl::enter();
+   glm_num::latent_mma<false, 3>(x, xr, w, out, orow, rows, n, k);
+ }
+diff --git a/zig/kernels/cuda/glm_mm.cu b/zig/kernels/cuda/glm_mm.cu
+index ce6511d59..43c730853 100644
+--- a/zig/kernels/cuda/glm_mm.cu
++++ b/zig/kernels/cuda/glm_mm.cu
+@@ -424,9 +424,18 @@ __device__ __forceinline__ void qtile_bf16(const __nv_bfloat16* __restrict__ src
+     if ((lane & 3) == 0) ds[(tg * 8) + (lane >> 2)] = s16;
+ }
+ 
+-extern "C" __global__ void glm_mm_qtile4(const __nv_bfloat16* src, uint32_t* dst, __half* ds, int N, int K) { qtile_bf16<4>(src, dst, ds, N, K); }
+-extern "C" __global__ void glm_mm_qtile6(const __nv_bfloat16* src, uint32_t* dst, __half* ds, int N, int K) { qtile_bf16<6>(src, dst, ds, N, K); }
+-extern "C" __global__ void glm_mm_qtile8(const __nv_bfloat16* src, uint32_t* dst, __half* ds, int N, int K) { qtile_bf16<8>(src, dst, ds, N, K); }
++extern "C" __global__ void glm_mm_qtile4(const __nv_bfloat16* src, uint32_t* dst, __half* ds, int N, int K) {
++    glm_pdl::enter();
++    qtile_bf16<4>(src, dst, ds, N, K);
++}
++extern "C" __global__ void glm_mm_qtile6(const __nv_bfloat16* src, uint32_t* dst, __half* ds, int N, int K) {
++    glm_pdl::enter();
++    qtile_bf16<6>(src, dst, ds, N, K);
++}
++extern "C" __global__ void glm_mm_qtile8(const __nv_bfloat16* src, uint32_t* dst, __half* ds, int N, int K) {
++    glm_pdl::enter();
++    qtile_bf16<8>(src, dst, ds, N, K);
++}
+ 
+ // bf16 rows [N][K] -> the tiled chunks (16 bf16 a chunk, in pair order)
+ extern "C" __global__ void glm_mm_tile16(const __nv_bfloat16* __restrict__ src, __nv_bfloat16* __restrict__ dst, int N, int K) {
+diff --git a/zig/src/families/glm/cuda_engine.zig b/zig/src/families/glm/cuda_engine.zig
+index c0249e65e..0ce4e01f8 100644
+--- a/zig/src/families/glm/cuda_engine.zig
++++ b/zig/src/families/glm/cuda_engine.zig
+@@ -504,7 +504,7 @@ pub const Engine = struct {
+ 
+     /// Whether the target MTP layer (and its cache page part) is loaded (false under TF_GLM_DRAFT_ONLY_HEAD=1).
+     pub fn mtpHead(e: *const Engine) bool {
+-        return e.mtp and e.c.mtp_part;
++        return e.mtp and e.w.config.mtp_part;
+     }
+ 
+     /// A verify window: `ids` (pending token, then drafts) at the committed position; `out[r]` drawn at pos + 1 + r.
+diff --git a/zig/src/families/glm/cuda_exl3.zig b/zig/src/families/glm/cuda_exl3.zig
+index 91611165c..254ee391d 100644
+--- a/zig/src/families/glm/cuda_exl3.zig
++++ b/zig/src/families/glm/cuda_exl3.zig
+@@ -212,7 +212,7 @@ pub fn refusal(t: core.checkpoint.Tensor, k: usize, n: usize) ?[]const u8 {
+ /// Every expert and projection keeps its own width (its trellis's last dimension); the tables hold them by expert.
+ pub fn load(L: anytype, i: u32, count: usize, dims: usize, inter: usize, cut: Span) !Experts {
+     if (dims % 128 != 0 or cut.lo % 128 != 0 or cut.hi % 128 != 0) return error.UnreadableExl3;
+-    const fast = try fastLoad();
++    const fast = (comptime @hasField(@TypeOf(L.*), "d")) and try fastLoad();
+     const width = cut.len();
+     var out: Experts = undefined;
+     out.shx = true;
+@@ -252,9 +252,8 @@ pub fn load(L: anytype, i: u32, count: usize, dims: usize, inter: usize, cut: Sp
+             k2.* = @intCast(h);
+         }
+         const uni = if (fast) uniform(mine) else 0;
+-        const base = if (fast and uni != 0)
+-            try uploadTrellisFast(L, tw, i, slices, kt, nt, m.by_cols, m.n, cut.lo, tileBytes(uni))
+-        else blk: {
++        const base = if (comptime @hasField(@TypeOf(L.*), "d")) blk: {
++            if (fast and uni != 0) break :blk try uploadTrellisFast(L, tw, i, slices, kt, nt, m.by_cols, m.n, cut.lo, tileBytes(uni));
+             if (fast) {
+                 for (0..count) |e| {
+                     const tile = tileBytes(@intCast(mine[e]));
+@@ -266,7 +265,7 @@ pub fn load(L: anytype, i: u32, count: usize, dims: usize, inter: usize, cut: Sp
+                 }
+             }
+             break :blk try L.put("layers.{d}.moe.exl3." ++ tw, .{i});
+-        };
++        } else try L.put("layers.{d}.moe.exl3." ++ tw, .{i});
+         var ptr: u64 = base;
+         for (mine) |k2| { // each expert's trellis follows the one before, at its own width
+             try L.host.appendSlice(L.gpa, std.mem.asBytes(&ptr));
+diff --git a/zig/src/families/glm/cuda_start_test.zig b/zig/src/families/glm/cuda_start_test.zig
+index cdf60ed44..4c9f0180e 100644
+--- a/zig/src/families/glm/cuda_start_test.zig
++++ b/zig/src/families/glm/cuda_start_test.zig
+@@ -125,27 +125,31 @@ test "GLM startup: failed liveness connection never resolves settings or constru
+ }
+ 
+ test "GLM startup: legacy paging matrix preserves settings and reports each rank before construction" {
+-    const Case = struct { raw: ?[]const u8, single: bool, multi: bool, fp8_refuses: bool, mode: []const u8 };
++    const Case = struct { raw: ?[]const u8, single: bool, multi: bool, fp8_on: bool, valid: bool, mode: []const u8 };
+     const cases = [_]Case{
+-        .{ .raw = null, .single = false, .multi = true, .fp8_refuses = false, .mode = "auto" },
+-        .{ .raw = "auto", .single = false, .multi = true, .fp8_refuses = false, .mode = "auto" },
+-        .{ .raw = "off", .single = false, .multi = false, .fp8_refuses = false, .mode = "off" },
+-        .{ .raw = "0", .single = false, .multi = false, .fp8_refuses = false, .mode = "off" },
+-        .{ .raw = "on", .single = true, .multi = true, .fp8_refuses = true, .mode = "on" },
+-        .{ .raw = "1", .single = true, .multi = true, .fp8_refuses = true, .mode = "on" },
+-        .{ .raw = "all", .single = true, .multi = true, .fp8_refuses = true, .mode = "on" },
+-        .{ .raw = "", .single = true, .multi = true, .fp8_refuses = true, .mode = "on" },
+-        .{ .raw = "false", .single = true, .multi = true, .fp8_refuses = true, .mode = "on" },
+-        .{ .raw = "AUTO", .single = true, .multi = true, .fp8_refuses = true, .mode = "on" },
+-        .{ .raw = "00", .single = true, .multi = true, .fp8_refuses = true, .mode = "on" },
+-        .{ .raw = " 0 ", .single = true, .multi = true, .fp8_refuses = true, .mode = "on" },
+-        .{ .raw = "off\n\x1b[31m", .single = true, .multi = true, .fp8_refuses = true, .mode = "on" },
++        .{ .raw = null, .single = false, .multi = true, .fp8_on = false, .valid = true, .mode = "auto" },
++        .{ .raw = "auto", .single = false, .multi = true, .fp8_on = false, .valid = true, .mode = "auto" },
++        .{ .raw = "off", .single = false, .multi = false, .fp8_on = false, .valid = true, .mode = "off" },
++        .{ .raw = "0", .single = false, .multi = false, .fp8_on = false, .valid = true, .mode = "off" },
++        .{ .raw = "on", .single = true, .multi = true, .fp8_on = true, .valid = true, .mode = "on" },
++        .{ .raw = "1", .single = true, .multi = true, .fp8_on = true, .valid = true, .mode = "on" },
++        .{ .raw = "all", .single = true, .multi = true, .fp8_on = true, .valid = true, .mode = "on" },
++        .{ .raw = "", .single = false, .multi = false, .fp8_on = false, .valid = false, .mode = "on" },
++        .{ .raw = "false", .single = false, .multi = false, .fp8_on = false, .valid = false, .mode = "on" },
++        .{ .raw = "AUTO", .single = false, .multi = false, .fp8_on = false, .valid = false, .mode = "on" },
++        .{ .raw = "00", .single = false, .multi = false, .fp8_on = false, .valid = false, .mode = "on" },
++        .{ .raw = " 0 ", .single = false, .multi = false, .fp8_on = false, .valid = false, .mode = "on" },
++        .{ .raw = "off\n\x1b[31m", .single = false, .multi = false, .fp8_on = false, .valid = false, .mode = "on" },
+     };
+     for (cases) |c| for (1..17) |world| for ([_]bool{ false, true }) |kv8| {
+         const last_rank = @min(world, 2);
+         for (0..last_rank) |rank| {
+             var w: World = .{ .expected_world = world };
+-            const pages = if (kv8) c.fp8_refuses else (if (world == 1) c.single else c.multi);
++            if (!c.valid) {
++                try std.testing.expectError(error.BadKvPages, run(&w, rank, world, c.raw, kv8));
++                continue;
++            }
++            const pages = if (kv8) c.fp8_on else (if (world == 1) c.single else c.multi);
+             try run(&w, rank, world, c.raw, kv8);
+             try std.testing.expectEqualDeep(Settings{ .kv8 = kv8, .pages = pages }, w.settings[rank].?);
+             try std.testing.expectEqual(@as(usize, 1), w.reports);
+diff --git a/zig/src/native/copy_drafts_cuda_test.zig b/zig/src/native/copy_drafts_cuda_test.zig
+index 793905ef4..18de7679e 100644
+--- a/zig/src/native/copy_drafts_cuda_test.zig
++++ b/zig/src/native/copy_drafts_cuda_test.zig
+@@ -83,8 +83,8 @@ fn glmCosts(comptime n: usize, comptime base: f64, comptime row: f64) [n]lanes.c
+     for (&costs, 0..) |*c, i| c.* = .{ .width = i + 1, .ms = base + row * @as(f64, @floatFromInt(i)) };
+     return costs;
+ }
+-const glm_window_costs = glmCosts(32, 52.0, 6.8);
+-const glm_shared_costs = glmCosts(32, 76.0, 4.1);
++const glm_window_costs = glmCosts(32, 38.73, 5.68);
++const glm_shared_costs = glmCosts(32, 47.38, 5.05);
+ 
+ const main_ms = [_]f64{ 54.5, 64.4, 74.1, 84.1, 94.6, 102.6, 108.5, 114.2, 120.8, 124.9, 130.1, 136.2, 140.6, 145.2, 149.7, 152.7, 166.2, 173.4, 175.9, 182.2, 188.6, 195.5, 199.6, 203.1, 207.6, 211.8, 213.4, 215.3, 223.2, 224.9, 226.0, 244.8 };
+ fn mainCosts(comptime n: usize) [n]lanes.config.Cost {

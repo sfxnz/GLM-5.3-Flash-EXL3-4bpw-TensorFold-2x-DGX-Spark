@@ -1,0 +1,93 @@
+{
+  "settings": {
+    "url": "http://127.0.0.1:8000",
+    "model": "glm-5.3-flash",
+    "concurrency": [
+      4
+    ],
+    "runs": 1,
+    "warmup": 0,
+    "max_tokens": 640,
+    "temperature": null,
+    "prompts": "prose",
+    "thinking": false,
+    "ignore_eos": true,
+    "started": "2026-11-23T16:46:57Z"
+  },
+  "runs": [
+    {
+      "concurrency": 4,
+      "wall_s": 39.173,
+      "errors": 0,
+      "aggregate_tok_s": 65.35,
+      "streams": [
+        {
+          "ttft_s": 0.419,
+          "tokens": 640,
+          "tokens_from": "usage",
+          "decode_tok_s": 18.64,
+          "wall_s": 34.691,
+          "speculative": {
+            "rounds": 312,
+            "drafted": 527,
+            "accepted": 327,
+            "acceptance_rate": 0.6204933586337761,
+            "tokens_per_round": 2.051282051282051
+          }
+        },
+        {
+          "ttft_s": 0.775,
+          "tokens": 640,
+          "tokens_from": "usage",
+          "decode_tok_s": 17.12,
+          "wall_s": 38.096,
+          "speculative": {
+            "rounds": 359,
+            "drafted": 527,
+            "accepted": 280,
+            "acceptance_rate": 0.5313092979127134,
+            "tokens_per_round": 1.7827298050139275
+          }
+        },
+        {
+          "ttft_s": 0.593,
+          "tokens": 640,
+          "tokens_from": "usage",
+          "decode_tok_s": 16.56,
+          "wall_s": 39.172,
+          "speculative": {
+            "rounds": 379,
+            "drafted": 490,
+            "accepted": 260,
+            "acceptance_rate": 0.5306122448979592,
+            "tokens_per_round": 1.6886543535620053
+          }
+        },
+        {
+          "ttft_s": 0.25,
+          "tokens": 640,
+          "tokens_from": "usage",
+          "decode_tok_s": 20.62,
+          "wall_s": 31.244,
+          "speculative": {
+            "rounds": 275,
+            "drafted": 539,
+            "accepted": 364,
+            "acceptance_rate": 0.6753246753246753,
+            "tokens_per_round": 2.327272727272727
+          }
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "concurrency": 4,
+      "runs": 1,
+      "errors": 0,
+      "median_ttft_s": 0.506,
+      "median_decode_tok_s": 17.88,
+      "median_aggregate_tok_s": 65.35
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+From 1b042e970914457105bcb483071a1680586730f1 Mon Sep 17 00:00:00 2001
+From: ashhart <71890694+ashhart@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 23:26:59 +0000
+Subject: [PATCH 26/39] glm/cuda: follow main's dependent-launch prologue for
+ combine_tail (#3776)
+
+---
+ zig/kernels/cuda/glm_glue_rows.cuh | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/zig/kernels/cuda/glm_glue_rows.cuh b/zig/kernels/cuda/glm_glue_rows.cuh
+index 55c40bbc1..5983e804c 100644
+--- a/zig/kernels/cuda/glm_glue_rows.cuh
++++ b/zig/kernels/cuda/glm_glue_rows.cuh
+@@ -145,6 +145,7 @@ extern "C" __global__ void tf_glm_combine(
+ // tf_glm_combine with the last slot apart (#3570): y [rows][slots - 1][d], tail [rows][d], fp32; its fmas in order.
+ extern "C" __global__ void tf_glm_combine_tail(
+         const float* y, const float* tail, const float* wts, float* out, int64_t d, int slots) {
++  glm_pdl::enter();
+   const int64_t c = glm_glue::col8();
+   if (c >= d) return;
+   const int64_t r = blockIdx.x;

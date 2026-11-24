@@ -1,0 +1,131 @@
+From ff8548fef6fa69f2883d5b9fa41f8c86e285eb52 Mon Sep 17 00:00:00 2001
+From: MiaAI_Lab <mia.ailab1@gmail.com>
+Date: Fri, 20 Nov 2026 01:35:44 +0200
+Subject: [PATCH 04/39] glm cuda: E4M3 latent cache kernels on KV pages
+
+---
+ zig/kernels/cuda/common/mla.cuh      | 37 ++++++++++++++++++++++++----
+ zig/kernels/cuda/glm_glue_attn.cuh   | 18 ++++++++++++++
+ zig/kernels/cuda/glm_glue_latent.cuh | 13 ++++++++++
+ 3 files changed, 63 insertions(+), 5 deletions(-)
+
+diff --git a/zig/kernels/cuda/common/mla.cuh b/zig/kernels/cuda/common/mla.cuh
+index 782884202..fb535d042 100644
+--- a/zig/kernels/cuda/common/mla.cuh
++++ b/zig/kernels/cuda/common/mla.cuh
+@@ -44,13 +44,16 @@ constexpr int wide_smem() {
+ }
+ 
+ // RW roped columns (Ling's 64) follow the latent in q and keys; SPLIT: block z is chunk z * sw + sr, keys page z.
+-template <int HB, bool FP8 = false, int RW = 0, bool SPLIT = false>
++// PAGED8: an E4M3 cache on KV pages (pt, pstep bytes apart): a dense chunk is one page, a sparse key's logical token goes
++// through the table to its page; codes and scales then load as on a window, so the arithmetic is the window's.
++template <int HB, bool FP8 = false, int RW = 0, bool SPLIT = false, bool PAGED8 = false>
+ __device__ void chunks_wide(const __nv_bfloat16* qa, const __nv_bfloat16* lc, const int* pos, const int* tok,
+                             const int* cnt, float* po, float* pm, float* pl, int64_t rows, int64_t heads, int64_t w,
+                             float scale, int sparse, const int* pt, int64_t pstep, const float* scales = nullptr,
+                             int sw = 1, int sr = 0) {
+   static_assert(!(FP8 && RW != 0), "the E4M3 cache holds the latent alone");
+   static_assert(!(SPLIT && FP8), "a split cache holds BF16 rows");
++  static_assert(!(PAGED8 && !FP8), "PAGED8 requires FP8");
+   constexpr int MT = HB / 16, KW = LW + RW;
+   extern __shared__ __align__(16) unsigned char smem[];
+   __nv_bfloat16* qs = reinterpret_cast<__nv_bfloat16*>(smem);
+@@ -67,6 +70,15 @@ __device__ void chunks_wide(const __nv_bfloat16* qa, const __nv_bfloat16* lc, co
+   // a dense chunk's 512 keys are one page, its rows from that page's; a sparse key's row comes as the token list has it
+   const __nv_bfloat16* paged = !FP8 && pt && !sparse && live ? lc + ((int64_t)pt[c] * (pstep / 2) - start * KW) : lc;
+   const __nv_bfloat16* keys_at = SPLIT ? lc + (c * CH - start) * KW : paged;
++  const unsigned char* codes8 = reinterpret_cast<const unsigned char*>(lc);
++  const float* scales8 = scales;
++  if constexpr (PAGED8) {
++    if (!sparse && live) {
++      const int64_t page = (int64_t)pt[c] * pstep;
++      codes8 += page - start * LW;
++      scales8 = reinterpret_cast<const float*>(reinterpret_cast<const unsigned char*>(scales) + page) - start;
++    }
++  }
+   auto load_kv = [&](int tile) {
+     __nv_bfloat16* dst = kvs + (tile & 1) * KT * KW;
+     const int64_t first = start + tile * KT;
+@@ -76,12 +88,27 @@ __device__ void chunks_wide(const __nv_bfloat16* qa, const __nv_bfloat16* lc, co
+       const bool ok = sparse ? ki < n : ki <= limit;
+       const int64_t src = ok ? (sparse ? (int64_t)tok[r * w + ki] : ki) : 0;
+       if constexpr (FP8) {
+-        const unsigned char* codes = reinterpret_cast<const unsigned char*>(lc);
+-        const float row_scale = ok ? scales[src] : 1.0f;
++        const unsigned char* code_base = codes8;
++        int64_t code_row = src;
++        float row_scale = 1.0f;
++        if constexpr (PAGED8) {
++          if (sparse) {
++            const int s = ok ? (int)src : 0;
++            const int64_t page = ok ? (int64_t)pt[s >> 9] * pstep : 0;
++            const int row = s & (CH - 1);
++            code_base = codes8 + page;
++            code_row = row;
++            row_scale = ok ? *reinterpret_cast<const float*>(reinterpret_cast<const unsigned char*>(scales) + page + row * 4) : 1.0f;
++          } else {
++            row_scale = ok ? scales8[src] : 1.0f;
++          }
++        } else {
++          row_scale = ok ? scales8[src] : 1.0f;
++        }
+ #pragma unroll
+         for (int j = 0; j < 8; j += 2) {
+-          const uint16_t bits = ok ? (uint16_t)codes[src * LW + u * 8 + j] |
+-                                        ((uint16_t)codes[src * LW + u * 8 + j + 1] << 8) : 0;
++          const uint16_t bits = ok ? (uint16_t)code_base[code_row * LW + u * 8 + j] |
++                                        ((uint16_t)code_base[code_row * LW + u * 8 + j + 1] << 8) : 0;
+           const float2 v = __half22float2(__half2(__nv_cvt_fp8x2_to_halfraw2(bits, __NV_E4M3)));
+           dst[wide(key, u) + j] = __float2bfloat16_rn(__fmul_rn(v.x, row_scale));
+           dst[wide(key, u) + j + 1] = __float2bfloat16_rn(__fmul_rn(v.y, row_scale));
+diff --git a/zig/kernels/cuda/glm_glue_attn.cuh b/zig/kernels/cuda/glm_glue_attn.cuh
+index 11fe779be..1ea4683c1 100644
+--- a/zig/kernels/cuda/glm_glue_attn.cuh
++++ b/zig/kernels/cuda/glm_glue_attn.cuh
+@@ -42,6 +42,24 @@ extern "C" __global__ void __launch_bounds__(256)
+                                  po, pm, pl, rows, heads, w, scale, sparse, nullptr, 0, scales);
+ }
+ 
++// The E4M3 variants on KV pages: the stream's table `pt`, its pages `pstep` bytes apart (codes and scales in each).
++extern "C" __global__ void __launch_bounds__(256)
++    tf_glm_chunks_16_fp8_paged(const __nv_bfloat16* qa, const unsigned char* lc, const float* scales, const int* pos,
++                               const int* tok, const int* cnt, float* po, float* pm, float* pl, int64_t rows,
++                               int64_t heads, int64_t w, float scale, int sparse, const int* pt, int64_t pstep) {
++  glm_pdl::enter();
++  glm_attn::chunks_wide<16, true, 0, false, true>(qa, reinterpret_cast<const __nv_bfloat16*>(lc), pos, tok, cnt,
++                                                 po, pm, pl, rows, heads, w, scale, sparse, pt, pstep, scales);
++}
++extern "C" __global__ void __launch_bounds__(256)
++    tf_glm_chunks_32_fp8_paged(const __nv_bfloat16* qa, const unsigned char* lc, const float* scales, const int* pos,
++                               const int* tok, const int* cnt, float* po, float* pm, float* pl, int64_t rows,
++                               int64_t heads, int64_t w, float scale, int sparse, const int* pt, int64_t pstep) {
++  glm_pdl::enter();
++  glm_attn::chunks_wide<32, true, 0, false, true>(qa, reinterpret_cast<const __nv_bfloat16*>(lc), pos, tok, cnt,
++                                                 po, pm, pl, rows, heads, w, scale, sparse, pt, pstep, scales);
++}
++
+ // latent._merge, block (row, head), 128 threads: chunks merged in order, o / l by div.full; skips sparse count-0 rows.
+ extern "C" __global__ void __launch_bounds__(128)
+     tf_glm_merge(const float* po, const float* pm, const float* pl, __nv_bfloat16* out, const int* cnt, int64_t rows,
+diff --git a/zig/kernels/cuda/glm_glue_latent.cuh b/zig/kernels/cuda/glm_glue_latent.cuh
+index 241b66add..f9ebbafa6 100644
+--- a/zig/kernels/cuda/glm_glue_latent.cuh
++++ b/zig/kernels/cuda/glm_glue_latent.cuh
+@@ -99,3 +99,16 @@ extern "C" __global__ void __launch_bounds__(512)
+   __shared__ float red[16];
+   tf_kv_fp8::quant_row<512, true>(__bfloat162float(lat[r * stride + d]), d, cache + at * 512, scales + at, red);
+ }
++
++// The same row on KV pages: page pt[at / 512] holds its codes at row at % 512 of this cache's part (from `cache`) and its
++// scale at that row of the part's scales (from `scales`), the pages `ps` bytes apart; the rounding is the window's.
++extern "C" __global__ void __launch_bounds__(512)
++    tf_glm_lat_write_fp8_paged(const __nv_bfloat16* lat, int64_t stride, unsigned char* cache, float* scales,
++                               const int* pos, const int* pt, int64_t ps) {
++  const int64_t r = blockIdx.x, at = (int64_t)pos[0] + r;
++  const int64_t page = (int64_t)pt[at / 512] * ps, row = at % 512;
++  const int d = threadIdx.x;
++  __shared__ float red[16];
++  float* s = reinterpret_cast<float*>(reinterpret_cast<unsigned char*>(scales) + page) + row;
++  tf_kv_fp8::quant_row<512, true>(__bfloat162float(lat[r * stride + d]), d, cache + page + row * 512, s, red);
++}

@@ -1,0 +1,238 @@
+From b88179af08917aecc2af5d5f5b96407f0593080f Mon Sep 17 00:00:00 2001
+From: ashhart <7138689+ashhart@users.noreply.github.com>
+Date: Sun, 22 Nov 2026 03:56:04 +0000
+Subject: [PATCH 29/39] glm cuda: read prefill own partials in place
+
+---
+ tools/glm_index_emulate/cuda_runtime.h       |  7 ++-
+ zig/kernels/cuda/glm_glue_rows.cuh           | 46 ++++++++++++++++----
+ zig/src/families/glm/cuda_forward.zig        | 11 ++---
+ zig/src/families/glm/cuda_forward_pair.zig   |  4 +-
+ zig/src/families/glm/cuda_forward_pieces.zig | 10 ++---
+ zig/src/families/glm/cuda_glue.zig           |  9 ++++
+ 6 files changed, 65 insertions(+), 22 deletions(-)
+
+diff --git a/tools/glm_index_emulate/cuda_runtime.h b/tools/glm_index_emulate/cuda_runtime.h
+index cc0a8f9e9..19ebc353b 100644
+--- a/tools/glm_index_emulate/cuda_runtime.h
++++ b/tools/glm_index_emulate/cuda_runtime.h
+@@ -15,7 +15,9 @@
+ #define __align__(x) __attribute__((aligned(x)))
+ struct dim3 { unsigned x, y, z; };
+ struct float4 { float x, y, z, w; };
+-inline thread_local dim3 threadIdx, blockIdx;
++struct uint4 { unsigned x, y, z, w; };
++inline float4 make_float4(float x, float y, float z, float w) { return {x, y, z, w}; }
++inline thread_local dim3 threadIdx, blockIdx, blockDim;
+ namespace emu {
+ inline std::barrier<>* block_bar;
+ inline std::barrier<>* warp_bar[32];
+@@ -76,6 +78,9 @@ inline int atomicMax(int* p, int v) {
+   return old;
+ }
+ inline int __float_as_int(float f) { int i; std::memcpy(&i, &f, 4); return i; }
++inline float __int_as_float(int i) { float f; std::memcpy(&f, &i, 4); return f; }
++inline unsigned __float_as_uint(float f) { unsigned u; std::memcpy(&u, &f, 4); return u; }
++inline float __expf(float f) { return std::exp(f); }
+ inline float __fadd_rn(float a, float b) { return a + b; }
+ inline float __fmul_rn(float a, float b) { return a * b; }
+ inline float __fmaf_rn(float a, float b, float c) { return std::fma(a, b, c); }
+diff --git a/zig/kernels/cuda/glm_glue_rows.cuh b/zig/kernels/cuda/glm_glue_rows.cuh
+index 5983e804c..b95d34ccb 100644
+--- a/zig/kernels/cuda/glm_glue_rows.cuh
++++ b/zig/kernels/cuda/glm_glue_rows.cuh
+@@ -40,6 +40,16 @@ __device__ __forceinline__ void ranks8(const float* g, int64_t rs, int64_t i, in
+     for (int j = 0; j < 8; ++j) a[j] = a[j] + b[j];
+   }
+ }
++// The same sum with `own` at k == me: every other rank keeps its gathered slot and FP32 addition order.
++__device__ __forceinline__ void ranks8own(const float* g, const float* own, int64_t rs, int64_t i, int world, int me,
++                                           float a[8]) {
++  ld8(me == 0 ? own + i : g + i, a);
++  for (int k = 1; k < world; ++k) {
++    float b[8];
++    ld8(k == me ? own + i : g + k * rs + i, b);
++    for (int j = 0; j < 8; ++j) a[j] = a[j] + b[j];
++  }
++}
+ 
+ }  // namespace glm_glue
+ 
+@@ -93,15 +103,10 @@ extern "C" __global__ void tf_glm_rank_sum(const float* own, const float* peers,
+   glm_glue::st8(out + i, a);
+ }
+ 
+-// glue._hc_post: stream s = bf16(post[s] branch + sum_t comb[t][s] x[t]) in LLVM's fma order; x may be xout.
+-extern "C" __global__ void tf_glm_hc_post(const __nv_bfloat16* x, __nv_bfloat16* xout, const float* g,
+-                                          const float* post, const float* comb, int64_t rs, int64_t d, int world) {
+-  glm_pdl::enter();
+-  const int64_t c = glm_glue::col8();
+-  if (c >= d) return;
++// The shared hc_post tail: identical post/comb FMA order for gathered and direct-own branches.
++__device__ __forceinline__ void hc_post_tail(const __nv_bfloat16* x, __nv_bfloat16* xout, const float* post,
++                                             const float* comb, int64_t d, int64_t c, const float branch[8]) {
+   const int64_t r = blockIdx.x;
+-  float branch[8];
+-  glm_glue::ranks8(g, rs, r * d + c, world, branch);
+   float xv[4][8];
+   for (int t = 0; t < 4; ++t) glm_glue::ld8(x + r * 4 * d + t * d + c, xv[t]);
+   for (int s = 0; s < 4; ++s) {
+@@ -119,6 +124,31 @@ extern "C" __global__ void tf_glm_hc_post(const __nv_bfloat16* x, __nv_bfloat16*
+   }
+ }
+ 
++// glue._hc_post: stream s = bf16(post[s] branch + sum_t comb[t][s] x[t]) in LLVM's fma order; x may be xout.
++extern "C" __global__ void tf_glm_hc_post(const __nv_bfloat16* x, __nv_bfloat16* xout, const float* g,
++                                          const float* post, const float* comb, int64_t rs, int64_t d, int world) {
++  glm_pdl::enter();
++  const int64_t c = glm_glue::col8();
++  if (c >= d) return;
++  const int64_t r = blockIdx.x;
++  float branch[8];
++  glm_glue::ranks8(g, rs, r * d + c, world, branch);
++  hc_post_tail(x, xout, post, comb, d, c, branch);
++}
++
++// Split prefill: rank me reads its FP32 partial in place; all peers and the HC tail keep their original order.
++extern "C" __global__ void tf_glm_hc_post_own(const __nv_bfloat16* x, __nv_bfloat16* xout, const float* g,
++                                              const float* post, const float* comb, int64_t rs, int64_t d, int world,
++                                              const float* own, int me) {
++  glm_pdl::enter();
++  const int64_t c = glm_glue::col8();
++  if (c >= d) return;
++  const int64_t r = blockIdx.x;
++  float branch[8];
++  glm_glue::ranks8own(g, own, rs, r * d + c, world, me, branch);
++  hc_post_tail(x, xout, post, comb, d, c, branch);
++}
++
+ // glue._combine: fp32 sum over slots in order of y[r][k] wts[r][k] (fma from 0), y fp32 or bf16, 8 columns a thread.
+ extern "C" __global__ void tf_glm_combine(
+         const void* y, int y_f32, const float* wts, float* out, int64_t d, int slots) {
+diff --git a/zig/src/families/glm/cuda_forward.zig b/zig/src/families/glm/cuda_forward.zig
+index 5dc2d029c..625924b2a 100644
+--- a/zig/src/families/glm/cuda_forward.zig
++++ b/zig/src/families/glm/cuda_forward.zig
+@@ -317,14 +317,15 @@ pub const Forward = struct {
+ 
+     const exchangePieces = @import("cuda_forward_pieces.zig").exchangePieces;
+ 
+-    /// hc_post of rows lo..hi from partials `g` [world][hi - lo][D] (a gathered room or a split one's own rows).
+-    fn postRows(f: *const Forward, r: Rank, lo: usize, hi: usize, g: u64) !void {
++    /// hc_post of rows lo..hi from ranked partials g; nonzero own replaces only rank me's gathered slot.
++    fn postRows(f: *const Forward, r: Rank, lo: usize, hi: usize, g: u64, own: u64) !void {
+         const c = &r.w.config;
+         const b = r.b;
+         const S: usize = c.hc;
+         const D: usize = c.hidden;
+         const x = b.x + lo * S * D * 2;
+-        try glue.hcPost(f.set(), f.stream, x, x, g, b.post + lo * S * 4, b.comb + lo * S * S * 4, hi - lo, D, S, r.w.share.world);
++        if (own != 0) return glue.hcPostOwn(f.set(), f.stream, x, x, g, b.post + lo * S * 4, b.comb + lo * S * S * 4, hi - lo, D, S, r.w.share.world, own, r.w.share.rank);
++        return glue.hcPost(f.set(), f.stream, x, x, g, b.post + lo * S * 4, b.comb + lo * S * S * 4, hi - lo, D, S, r.w.share.world);
+     }
+ 
+     /// forward._pre of rows lo..hi.
+@@ -337,12 +338,12 @@ pub const Forward = struct {
+     }
+ 
+     /// One piece's glue after a site: hc_post, then the next layer's hc_pre or (after the last layer) the stream mean.
+-    pub fn glueRows(f: *const Forward, r: Rank, j: usize, site: Site, lo: usize, hi: usize, g: u64) !void {
++    pub fn glueRows(f: *const Forward, r: Rank, j: usize, site: Site, lo: usize, hi: usize, g: u64, own: u64) !void {
+         const stamp = prof_mod.span(f.prof, f.stream, .glue);
+         defer stamp.end();
+         const c = &r.w.config;
+         const layers = r.w.layers;
+-        try f.postRows(r, lo, hi, g);
++        try f.postRows(r, lo, hi, g, own);
+         if (site == .mixer) return f.preRows(r, layers[j].ffn_hc, layers[j].post_norm, lo, hi);
+         if (j + 1 < layers.len) return f.preRows(r, layers[j + 1].attn_hc, layers[j + 1].in_norm, lo, hi);
+         try glue.streamMean(f.set(), f.stream, r.b.x + lo * c.hc * c.hidden * 2, r.b.hidden + lo * c.hidden * 2, hi - lo, c.hidden, c.hc);
+diff --git a/zig/src/families/glm/cuda_forward_pair.zig b/zig/src/families/glm/cuda_forward_pair.zig
+index 1ff3e7c84..a6ef203e0 100644
+--- a/zig/src/families/glm/cuda_forward_pair.zig
++++ b/zig/src/families/glm/cuda_forward_pair.zig
+@@ -72,10 +72,10 @@ fn exchangeGlue(f: *const Forward, p: *const Pieces, j: usize, site: Site, cut:
+         if (split) {
+             for (f.ranks) |r| {
+                 const mine = share(n, world, r.w.share.rank);
+-                try g.glueRows(r, j, site, lo + mine[0], lo + mine[1], room(r, lo));
++                try g.glueRows(r, j, site, lo + mine[0], lo + mine[1], room(r, lo), r.b.part + (lo + mine[0]) * D * 4);
+             }
+             try pieces.shareGlued(f, p, lo, n, last);
+-        } else for (f.ranks) |r| try g.glueRows(r, j, site, lo, piece[1], room(r, lo));
++        } else for (f.ranks) |r| try g.glueRows(r, j, site, lo, piece[1], room(r, lo), 0);
+         try p.shared[q].record(p.side);
+     }
+ }
+diff --git a/zig/src/families/glm/cuda_forward_pieces.zig b/zig/src/families/glm/cuda_forward_pieces.zig
+index c713c513f..fd6215e14 100644
+--- a/zig/src/families/glm/cuda_forward_pieces.zig
++++ b/zig/src/families/glm/cuda_forward_pieces.zig
+@@ -95,6 +95,7 @@ pub fn exchangePieces(f: *const Forward, p: *const Pieces, j: usize, site: Site,
+ pub fn gluePieces(f: *const Forward, p: *const Pieces, j: usize, site: Site, cut: []const [2]usize) !void {
+     defer prof.context(f.prof, j, null, if (site == .mixer) .mixer else .ffn);
+     const world = f.ranks[0].w.share.world;
++    const D = f.ranks[0].w.config.hidden;
+     const last = site == .ffn and j + 1 == f.ranks[0].w.layers.len;
+     var sent: usize = 0;
+     for (cut, 0..) |piece, q| {
+@@ -105,12 +106,12 @@ pub fn gluePieces(f: *const Forward, p: *const Pieces, j: usize, site: Site, cut
+         try f.stream.wait(p.gathered[q]);
+         stamp.end();
+         if (!f.splits(n)) {
+-            for (f.ranks) |r| try f.glueRows(r, j, site, lo, piece[1], room(r, lo));
++            for (f.ranks) |r| try f.glueRows(r, j, site, lo, piece[1], room(r, lo), 0);
+             continue;
+         }
+         for (f.ranks) |r| {
+             const mine = share(n, world, r.w.share.rank);
+-            try f.glueRows(r, j, site, lo + mine[0], lo + mine[1], room(r, lo));
++            try f.glueRows(r, j, site, lo + mine[0], lo + mine[1], room(r, lo), r.b.part + (lo + mine[0]) * D * 4);
+         }
+         try p.glues[q].record(f.stream);
+         stamp = prof.span(f.prof, p.side, .wait_glues);
+@@ -187,16 +188,13 @@ pub fn partials(f: *const Forward, p: *const Pieces, lo: usize, n: usize, split:
+         .local => for (f.ranks) |to| {
+             const mine = share(n, world, to.w.share.rank);
+             const own = mine[1] - mine[0];
+-            for (f.ranks) |from| try f.copy(p.side, room(to, lo) + from.w.share.rank * own * D * 4, from.b.part + (lo + mine[0]) * D * 4, own * D * 4);
++            for (f.ranks) |from| if (from.w.share.rank != to.w.share.rank) try f.copy(p.side, room(to, lo) + from.w.share.rank * own * D * 4, from.b.part + (lo + mine[0]) * D * 4, own * D * 4);
+         },
+         .nccl => |x| {
+             const r = f.ranks[0];
+             const me = r.w.share.rank;
+-            const mine = share(n, world, me);
+-            const own = mine[1] - mine[0];
+             const plan: relay.Relay = .{ .world = world, .rank = me, .n = n };
+             if (f.ring) try relay.partials(x.lib, x.comm, p.side, plan, room(r, lo), r.b.part, lo, D) else try relay.splitPartials(x.lib, x.comm, p.side, plan, room(r, lo), r.b.part, lo, D);
+-            try f.copy(p.side, room(r, lo) + me * own * D * 4, r.b.part + (lo + mine[0]) * D * 4, own * D * 4);
+         },
+     }
+ }
+diff --git a/zig/src/families/glm/cuda_glue.zig b/zig/src/families/glm/cuda_glue.zig
+index af9049584..3771a8fea 100644
+--- a/zig/src/families/glm/cuda_glue.zig
++++ b/zig/src/families/glm/cuda_glue.zig
+@@ -36,6 +36,7 @@ pub const Kernels = struct {
+     stream_mean: cuda.Function,
+     rank_sum: cuda.Function,
+     hc_post: cuda.Function,
++    hc_post_own: cuda.Function,
+     combine: cuda.Function,
+     combine_tail: cuda.Function,
+     slice_sum: cuda.Function,
+@@ -263,6 +264,14 @@ pub fn hcPost(set: Set, stream: cuda.Stream, x: u64, xout: u64, g: u64, post: u6
+     try rows8Launch(set.glue.hc_post, stream, &a, rows, d, .{ x, xout, g });
+ }
+ 
++/// Split prefill's hc_post: rank me reads own in place instead of its unused slot in gathered g.
++pub fn hcPostOwn(set: Set, stream: cuda.Stream, x: u64, xout: u64, g: u64, post: u64, comb: u64, rows: usize, d: usize, s: usize, world: usize, own: u64, me: usize) !void {
++    if (s != 4) return error.StreamsNotFour;
++    var a: cuda.Args = .{};
++    inline for (.{ x, xout, g, post, comb, i64of(rows * d), i64of(d), cint(world), own, cint(me) }) |v| a.add(v);
++    try rows8Launch(set.glue.hc_post_own, stream, &a, rows, d, .{ x, xout, own, g });
++}
++
+ /// glue.rank_sum: out bf16 = partials summed rank 0 first, `me`'s from `own`, others' from `peers` in rank order.
+ pub fn rankSum(set: Set, stream: cuda.Stream, own: u64, peers: u64, peer_stride: usize, out: u64, me: usize, rows: usize, d: usize, world: usize) !void {
+     var a: cuda.Args = .{};

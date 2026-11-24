@@ -1,0 +1,16 @@
+
+NOTE: The SHMEM allocation limit is set to the default of 64MB.  This may be
+   insufficient for PyTorch.  NVIDIA recommends the use of the following flags:
+   docker run --gpus all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 ...
+
+{
+ "device": "NVIDIA GB10",
+ "torch": "2.13.0a0+9186a08b2c.nv26.07",
+ "copy_GBps_read_or_write": 112.4,
+ "copy_GBps_total_traffic": 224.7,
+ "read_only_sum_GBps": 24.8,
+ "gemm_bf16_4096_TFLOPS": 88.3,
+ "gemm_bf16_8192_TFLOPS": 95.4,
+ "gemm_fp16_4096_TFLOPS": 87.7,
+ "gemm_fp16_8192_TFLOPS": 94.9
+}

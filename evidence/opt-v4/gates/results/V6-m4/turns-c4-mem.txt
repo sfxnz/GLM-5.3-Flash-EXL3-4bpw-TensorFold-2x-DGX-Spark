@@ -1,0 +1,17 @@
+19:28:22 head avail 10.49 swapfree 9.90 pswpout 106678716 spark2 avail 17.33 swapfree 15.82 pswpout 13846968
+19:28:32 head avail 10.50 swapfree 9.90 pswpout 106678716 spark2 avail 17.20 swapfree 15.82 pswpout 13846968
+19:28:43 head avail 10.39 swapfree 9.90 pswpout 106678716 spark2 avail 17.07 swapfree 15.82 pswpout 13846968
+19:28:53 head avail 10.22 swapfree 9.90 pswpout 106678716 spark2 avail 17.08 swapfree 15.82 pswpout 13846968
+19:29:03 head avail 10.44 swapfree 9.90 pswpout 106678716 spark2 avail 17.09 swapfree 15.82 pswpout 13846968
+19:29:14 head avail 10.50 swapfree 9.90 pswpout 106678716 spark2 avail 17.06 swapfree 15.82 pswpout 13846968
+19:29:24 head avail 10.23 swapfree 9.90 pswpout 106678716 spark2 avail 17.08 swapfree 15.82 pswpout 13846968
+19:29:35 head avail 10.30 swapfree 9.90 pswpout 106678716 spark2 avail 16.97 swapfree 15.82 pswpout 13846968
+19:29:45 head avail 10.14 swapfree 9.91 pswpout 106678716 spark2 avail 16.99 swapfree 15.82 pswpout 13846968
+19:29:56 head avail 10.31 swapfree 9.91 pswpout 106678716 spark2 avail 16.96 swapfree 15.82 pswpout 13846968
+19:30:06 head avail 10.13 swapfree 9.91 pswpout 106678716 spark2 avail 17.00 swapfree 15.82 pswpout 13846968
+19:30:16 head avail 10.20 swapfree 9.91 pswpout 106678716 spark2 avail 16.96 swapfree 15.82 pswpout 13846968
+19:30:27 head avail 10.25 swapfree 9.88 pswpout 106687250 spark2 avail 16.97 swapfree 15.82 pswpout 13846968
+19:30:37 head avail 10.24 swapfree 9.88 pswpout 106687250 spark2 avail 16.95 swapfree 15.82 pswpout 13846968
+19:30:47 head avail 10.07 swapfree 9.88 pswpout 106687250 spark2 avail 17.01 swapfree 15.82 pswpout 13846968
+19:30:58 head avail 10.01 swapfree 9.88 pswpout 106687250 spark2 avail 16.97 swapfree 15.82 pswpout 13846968
+19:31:08 head avail 10.04 swapfree 9.88 pswpout 106687250 spark2 avail 16.93 swapfree 15.82 pswpout 13846968

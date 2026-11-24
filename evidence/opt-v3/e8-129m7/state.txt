@@ -1,0 +1,4 @@
+2026-11-17T20:44:59Z start head load 3.69 5.06 6.77 hot 58400 gpu 47,9.70W avail 10.1 | worker 0.68 1.65 1.98 46800 14.8
+other containers on head: none
+greedy [293, 300, 270, 300]
+2026-11-17T20:50:51Z after-gated head load 6.41 5.09 6.14 hot 81800 gpu 64,33.94W avail 8.5 | worker 1.59 1.60 1.86 66000 14.7

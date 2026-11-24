@@ -1,0 +1,2 @@
+info: glm kv selection: pool pages; TF_KV_PAGES=on (env); rank 0 of 2; cache fp8
+[tensorfold] CUDA sm_121 device 0 (NVIDIA GB10, memory shared with the host): model 83.38 GiB; 4 streams at once, the engine's own and 3 more taking 6486 pages of 512 rows (10.95 GiB) as they need them (enough for 6 at a 524288-token window), 302 MiB fixed each, of 14.4 GiB left after a 10.5 GiB reserve; prompts in passes of up to 2048 rows, 16 kept states' slots (2.5 GiB) and the prompt cache over the pool's pages; own glue kernels

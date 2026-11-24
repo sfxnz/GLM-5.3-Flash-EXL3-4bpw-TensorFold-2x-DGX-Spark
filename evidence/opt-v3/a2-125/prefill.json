@@ -1,0 +1,62 @@
+{
+  "settings": {
+    "url": "http://127.0.0.1:8000",
+    "model": "glm-5.3-flash",
+    "seed": 1794935521,
+    "runs": 1,
+    "thinking": false,
+    "started": "2026-11-17T17:12:11Z"
+  },
+  "runs": [
+    {
+      "target": 8000,
+      "run": 0,
+      "prompt_tokens": 7912,
+      "cached_tokens": 0,
+      "cold": true,
+      "ttft_s": 7.561,
+      "prefill_tok_s": 1046.4
+    },
+    {
+      "target": 32000,
+      "run": 0,
+      "prompt_tokens": 32399,
+      "cached_tokens": 0,
+      "cold": true,
+      "ttft_s": 57.484,
+      "prefill_tok_s": 563.6
+    },
+    {
+      "target": 128000,
+      "run": 0,
+      "prompt_tokens": 132801,
+      "cached_tokens": 0,
+      "cold": true,
+      "ttft_s": 156.273,
+      "prefill_tok_s": 849.8
+    }
+  ],
+  "summary": [
+    {
+      "target": 8000,
+      "cold_runs": 1,
+      "median_prompt_tokens": 7912,
+      "median_ttft_s": 7.561,
+      "median_prefill_tok_s": 1046.4
+    },
+    {
+      "target": 32000,
+      "cold_runs": 1,
+      "median_prompt_tokens": 32399,
+      "median_ttft_s": 57.484,
+      "median_prefill_tok_s": 563.6
+    },
+    {
+      "target": 128000,
+      "cold_runs": 1,
+      "median_prompt_tokens": 132801,
+      "median_ttft_s": 156.273,
+      "median_prefill_tok_s": 849.8
+    }
+  ]
+}

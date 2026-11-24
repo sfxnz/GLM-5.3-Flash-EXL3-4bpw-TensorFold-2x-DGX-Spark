@@ -1,0 +1,31 @@
+info: graph cache glm verify: captured, 32 held: MemAvailable 9.98 -> 9.98 GiB (4 MiB)
+info: graph cache glm verify: captured, 32 held: MemAvailable 9.98 -> 9.98 GiB (0 MiB)
+info: graph cache glm verify: captured, 32 held: MemAvailable 9.96 -> 9.95 GiB (9 MiB)
+info: graph cache glm verify: captured, 32 held: MemAvailable 9.94 -> 9.94 GiB (0 MiB)
+info: graph cache glm verify: captured, 32 held: MemAvailable 9.93 -> 9.93 GiB (-2 MiB)
+info: graph cache glm verify: captured, 32 held: MemAvailable 9.94 -> 9.94 GiB (0 MiB)
+info: graph cache glm verify: captured, 32 held: MemAvailable 9.91 -> 9.90 GiB (5 MiB)
+[tensorfold] done chatcmpl-af827dfd068dde97ff49d93f49aec641 prompt=405390 cached=6144 thinking=False effort=none tokens=32 sha=c3ab66dbd09c finish=stop rounds=10 accepted=21/45 ttft=343.989 decode=0.992 elapsed=344.981 queued=0.000 tok/s=31.3 seed=1928663444931689820
+[tensorfold] done chatcmpl-54523c780a33d637cd95dcf0e71a09b5 prompt=405452 cached=403456 thinking=False effort=none tokens=11 sha=28d134724e48 finish=stop rounds=5 accepted=6/15 ttft=2.337 decode=0.464 elapsed=2.800 queued=0.000 tok/s=21.6 seed=4007667239725937551
+[tensorfold] done chatcmpl-97c11f6872e9fb126c45d755a8441e4d prompt=10109 cached=0 thinking=False effort=none tokens=1 sha=6686fc4c7490 finish=length rounds=0 accepted=0/0 ttft=7.727 decode=0.000 elapsed=7.727 queued=0.000 tok/s=0.0 seed=8022531445093450016
+info: graph cache glm verify: captured, 32 held: MemAvailable 10.07 -> 10.07 GiB (0 MiB)
+info: graph cache glm verify: captured, 32 held: MemAvailable 10.09 -> 10.09 GiB (0 MiB)
+info: graph cache glm verify: captured, 32 held: MemAvailable 10.09 -> 10.10 GiB (-8 MiB)
+[tensorfold] done chatcmpl-fdbf59d1184caded4e16e8341d89b068 prompt=519423 cached=8192 thinking=False effort=none tokens=9 sha=a10780720f4c finish=stop rounds=3 accepted=5/8 ttft=687.190 decode=3.344 elapsed=690.534 queued=2.686 tok/s=2.4 seed=856690116299063191
+info: graph cache glm verify: captured, 32 held: MemAvailable 10.11 -> 10.11 GiB (0 MiB)
+info: graph cache glm verify: captured, 32 held: MemAvailable 10.14 -> 10.14 GiB (0 MiB)
+info: graph cache glm verify: captured, 32 held: MemAvailable 10.14 -> 10.14 GiB (4 MiB)
+[tensorfold] done chatcmpl-f9b04ffd6babb02525a6c48ca33af855 prompt=519283 cached=0 thinking=False effort=none tokens=9 sha=fab022f4e6ca finish=stop rounds=4 accepted=4/7 ttft=1132.134 decode=5.520 elapsed=1137.653 queued=2.686 tok/s=1.4 seed=3521568697947866504
+info: graph cache glm verify: captured, 32 held: MemAvailable 10.22 -> 10.21 GiB (2 MiB)
+info: graph cache glm verify: captured, 32 held: MemAvailable 10.20 -> 10.20 GiB (2 MiB)
+info: graph cache glm verify: captured, 32 held: MemAvailable 10.19 -> 10.19 GiB (0 MiB)
+[tensorfold] done chatcmpl-2c9b2a0f66a9df8b0aaae0965a1202c0 prompt=519337 cached=0 thinking=False effort=none tokens=9 sha=6bd4da5ea4ff finish=stop rounds=3 accepted=5/6 ttft=1484.141 decode=3.071 elapsed=1487.212 queued=2.686 tok/s=2.6 seed=8822599833942151414
+info: graph cache glm verify: captured, 32 held: MemAvailable 10.27 -> 10.27 GiB (0 MiB)
+info: graph cache glm verify: captured, 32 held: MemAvailable 10.27 -> 10.27 GiB (0 MiB)
+[tensorfold] done chatcmpl-f758bf3e91f3462120e94c913abe8707 prompt=519672 cached=0 thinking=False effort=none tokens=9 sha=43618de34890 finish=stop rounds=3 accepted=5/8 ttft=1708.027 decode=0.219 elapsed=1708.246 queued=0.000 tok/s=36.5 seed=120640435261616676
+info: graph cache glm verify: captured, 32 held: MemAvailable 10.20 -> 10.22 GiB (-20 MiB)
+[tensorfold] done chatcmpl-f4cdebf393bb9bf0a6a40b1f0206e9d5 prompt=519707 cached=518144 thinking=False effort=none tokens=9 sha=43618de34890 finish=stop rounds=2 accepted=6/6 ttft=1.593 decode=1.537 elapsed=3.129 queued=0.000 tok/s=5.2 seed=7783173356993170251
+[tensorfold] done chatcmpl-17e56b19590904b18dc3cbfdc55179cc prompt=519318 cached=518144 thinking=False effort=none tokens=9 sha=fab022f4e6ca finish=stop rounds=2 accepted=6/6 ttft=3.012 decode=1.594 elapsed=4.606 queued=1.678 tok/s=5.0 seed=2877713358102912663
+[tensorfold] done chatcmpl-5d36a96b028698c2544316e8b4fa40fd prompt=519372 cached=518144 thinking=False effort=none tokens=9 sha=6bd4da5ea4ff finish=stop rounds=2 accepted=6/6 ttft=4.480 decode=1.694 elapsed=6.173 queued=1.678 tok/s=4.7 seed=7337228117050712935
+info: graph cache glm verify: captured, 32 held: MemAvailable 10.19 -> 10.19 GiB (0 MiB)
+[tensorfold] done chatcmpl-52447395887374402c6d4ace05b2b70b prompt=519457 cached=518144 thinking=False effort=none tokens=9 sha=a10780720f4c finish=stop rounds=2 accepted=6/6 ttft=6.048 decode=0.194 elapsed=6.242 queued=1.678 tok/s=41.2 seed=2790370000243001375

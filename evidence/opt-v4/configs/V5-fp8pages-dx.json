@@ -1,0 +1,47 @@
+{
+ "name": "V5-fp8pages-dx",
+ "base_url": "http://127.0.0.1:8000",
+ "model": "glm-5.3-flash",
+ "stop": [
+  "bash",
+  "harness/stop.sh"
+ ],
+ "health_timeout_s": 1500,
+ "concurrency": 4,
+ "prefill_lengths": [
+  6250,
+  50000,
+  400000
+ ],
+ "extra_body": {
+  "chat_template_kwargs": {
+   "enable_thinking": false
+  }
+ },
+ "temperature": 1.0,
+ "memory": {
+  "cap_gib": 115,
+  "probe": [
+   "bash",
+   "harness/memprobe.sh"
+  ],
+  "interval_s": 5
+ },
+ "require_ac": true,
+ "panel": "c1:6,c4:6,k1:6",
+ "boot_overrides": [
+  "IMAGE=tf-glm53:1.2.10-p34d48bbb",
+  "TF_VERSION=1.2.10",
+  "TF_SHA256=c335c44f81d55847a5f81d74a94ac3d09f81bd6688247cff972cf1f63fc18105",
+  "ENGINE_CACHE=tf-glm53-cache-1210",
+  "PARALLEL=4",
+  "CONTEXT=524288",
+  "KV_SHARE=16",
+  "EXTRA_ARGS=--kv-cache fp8",
+  "INDEX_CUDA=1",
+  "DRAFTER=incoai/GLM-5.3-Flash-DFlash2",
+  "DRAFTER_BITS=4",
+  "EXTRA_ENV=TF_KV_PAGES=on TF_GLM_KV_LIVE_HALF=1 TF_GLM_EXPERT_FORM=classic TF_GLM_DRAFT_ONLY_HEAD=1 TF_GLM_GRAPHS=1 TF_GLM_GRAPH_TAPS=1 TF_GLM_MLA_ROWS=1 TF_GLM_SHARED_SLOT=1 TF_GLM_ATT_BLOCKS=1 TF_GLM_SELECT_BLOCKS=1 NCCL_BUFFSIZE=1048576 NCCL_PROTO=LL,Simple"
+ ],
+ "lever_note": "V5-fp8pages-dx: FP8 KV on pages + DX + MEM(0021-0023) + E + PF + NCCL_BUFFSIZE=1M + NCCL_PROTO=LL,Simple + KV_SHARE=16"
+}

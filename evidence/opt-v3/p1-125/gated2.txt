@@ -1,0 +1,9 @@
+c8 {"tok_s": 55.48, "errors": 0, "ttft": 1.1280000000000001, "ms_round": 296.4, "tok_round": 2.19, "accept": 0.399, "other": 8.08, "burst": 17.41, "swapout": 183, "mhz": 2177, "gpu_c": 67, "waited": 10, "clean": false}
+c8 {"tok_s": 53.41, "errors": 0, "ttft": 1.2105000000000001, "ms_round": 318.0, "tok_round": 2.24, "accept": 0.416, "other": 7.67, "burst": 17.5, "swapout": 280, "mhz": 2177, "gpu_c": 68, "waited": 10, "clean": false}
+c8 {"tok_s": 39.38, "errors": 0, "ttft": 0.9675, "ms_round": 424.2, "tok_round": 2.23, "accept": 0.413, "other": 7.47, "burst": 17.69, "swapout": 0, "mhz": 2177, "gpu_c": 67, "waited": 10, "clean": false}
+c8 {"tok_s": 59.71, "errors": 0, "ttft": 0.9565, "ms_round": 281.1, "tok_round": 2.27, "accept": 0.425, "other": 1.39, "burst": 2.82, "swapout": 0, "mhz": 2177, "gpu_c": 66, "waited": 10, "clean": false}
+c8 {"tok_s": 56.19, "errors": 0, "ttft": 0.9535, "ms_round": 299.4, "tok_round": 2.21, "accept": 0.407, "other": 3.31, "burst": 6.94, "swapout": 0, "mhz": 2177, "gpu_c": 68, "waited": 10, "clean": false}
+p32 {"tok_s": 1075.5, "ttft": 30.259, "prompt_tokens": 32542, "errors": 0, "other": 3.82, "burst": 7.57, "swapout": 0, "mhz": 2177, "gpu_c": 74, "waited": 10, "clean": false}
+p32 {"tok_s": 1082.6, "ttft": 30.084, "prompt_tokens": 32568, "errors": 0, "other": 1.65, "burst": 2.17, "swapout": 0, "mhz": 2177, "gpu_c": 75, "waited": 10, "clean": false}
+p32 {"tok_s": 1082.6, "ttft": 29.876, "prompt_tokens": 32345, "errors": 0, "other": 0.97, "burst": 1.56, "swapout": 0, "mhz": 2177, "gpu_c": 75, "waited": 10, "clean": true}
+SUMMARY p1-125 {"c8": {"n_clean": 0, "n": 5, "tok_s": 55.48, "best": 59.71, "ms_round": 299.4, "tok_round": 2.23, "accept": 0.413}, "p32": {"n_clean": 1, "n": 3, "tok_s": 1082.6, "best": 1082.6}}

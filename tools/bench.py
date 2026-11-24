@@ -1,12 +1,13 @@
-"""Streamed decode speed and time to first token at each concurrency, thinking off, prose prompts, N runs, medians.
+"""Streamed decode speed and time to first token at each concurrency, thinking off, N runs, medians.
 
 python3 tools/bench.py [--concurrency 1,4,8] [--runs 3] [--warmup 1] [--max-tokens 512] [--temperature T]
-                       [--out evidence/run/bench.json]
+                       [--prompts prose|code] [--out evidence/run/bench.json]
 
 Per stream: ttft_s is the first content token; decode_tok_s is (tokens - 1) over first-to-last content token. aggregate_tok_s
 is all streams' tokens over the run's wall time. Above the server's --parallel, the extra streams queue, which shows in
 their ttft_s. Every stream's raw numbers go to --out. Each level first runs --warmup untimed runs, left out of runs and
 summary. Without --temperature the body carries none, so the server's default applies (sampled at 1.0); 0 is greedy.
+--prompts code asks for programs instead of prose: drafts keep more of code, so it is the agent-shaped view.
 """
 import argparse
 import json
@@ -29,6 +30,19 @@ PROMPTS = [
     "Write a detailed travel guide to a fictional coastal city, district by district.",
     "Describe at length how a modern compiler turns source code into machine code.",
 ]
+
+
+CODE_PROMPTS = [
+    "Write a complete Python module that implements an LRU cache with TTL support, with type hints, docstrings and unit tests.",
+    "Write a C program that implements a hash map with open addressing: insert, lookup, delete and resize, with comments.",
+    "Write a Rust implementation of a binary min-heap with push, pop, peek and heapify, plus its tests.",
+    "Write a TypeScript module that parses and evaluates arithmetic expressions with a recursive descent parser, with tests.",
+    "Write a Go HTTP server with JSON CRUD endpoints for a todo list, in-memory storage and logging middleware.",
+    "Write a SQL schema for a library management system and twenty example queries against it.",
+    "Write a Bash script that backs up a directory with rotation, logging and error handling, with comments.",
+    "Write a Python script that reads a CSV file, computes per-column statistics and writes a Markdown report, with argparse.",
+]
+PROMPT_SETS = {"prose": PROMPTS, "code": CODE_PROMPTS}
 
 
 def one_stream(chat_url, model, prompt, max_tokens, temperature=None):
@@ -54,12 +68,12 @@ def one_stream(chat_url, model, prompt, max_tokens, temperature=None):
             "wall_s": round(end, 3), "speculative": spec}
 
 
-def run_once(chat_url, model, concurrency, max_tokens, temperature=None):
+def run_once(chat_url, model, concurrency, max_tokens, temperature=None, prompts=PROMPTS):
     out = [None] * concurrency
 
     def worker(i):
         try:
-            out[i] = one_stream(chat_url, model, PROMPTS[i % len(PROMPTS)], max_tokens, temperature)
+            out[i] = one_stream(chat_url, model, prompts[i % len(prompts)], max_tokens, temperature)
         except Exception as e:  # recorded and counted, so one failed stream cannot pass as a fast run
             out[i] = {"error": repr(e)}
 
@@ -92,23 +106,25 @@ def main(argv=None):
     ap.add_argument("--warmup", type=int, default=1, help="untimed runs at each level before the timed ones")
     ap.add_argument("--max-tokens", type=int, default=512)
     ap.add_argument("--temperature", type=float, help="sent only when set; the server's default otherwise")
+    ap.add_argument("--prompts", choices=sorted(PROMPT_SETS), default="prose")
     ap.add_argument("--url", default=recipe.default_url())
     ap.add_argument("--model", default=recipe.setting("SERVED_NAME"))
     ap.add_argument("--out", help="write settings, every run and the summary here as JSON")
     a = ap.parse_args(argv)
     chat_url = a.url + "/v1/chat/completions"
     levels = [int(c) for c in a.concurrency.split(",")]
+    prompts = PROMPT_SETS[a.prompts]
 
     report = {"settings": {"url": a.url, "model": a.model, "concurrency": levels, "runs": a.runs, "warmup": a.warmup,
-                           "max_tokens": a.max_tokens, "temperature": a.temperature, "thinking": False,
+                           "max_tokens": a.max_tokens, "temperature": a.temperature, "prompts": a.prompts, "thinking": False,
                            "ignore_eos": True,
                            "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())},
               "runs": [], "summary": []}
     print(f"{'c':>3} {'runs':>4} {'err':>3} {'ttft_s':>8} {'decode tok/s':>13} {'aggregate tok/s':>16}")
     for c in levels:
         for _ in range(a.warmup):
-            run_once(chat_url, a.model, c, a.max_tokens, a.temperature)
-        runs = [run_once(chat_url, a.model, c, a.max_tokens, a.temperature) for _ in range(a.runs)]
+            run_once(chat_url, a.model, c, a.max_tokens, a.temperature, prompts)
+        runs = [run_once(chat_url, a.model, c, a.max_tokens, a.temperature, prompts) for _ in range(a.runs)]
         s = summarize(runs)
         report["runs"] += runs
         report["summary"].append(s)

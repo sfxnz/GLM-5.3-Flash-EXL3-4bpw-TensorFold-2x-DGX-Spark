@@ -1,0 +1,27 @@
+== before-stop 2026-11-17T16:53:02Z
+-- head
+MemFree: 5664740 kB MemAvailable: 12409200 kB Buffers: 779352 kB Cached: 7171128 kB SwapFree: 14023408 kB 
+Node 0, zone   Normal   9300  54939  76293  62022   5941   4850   1377    262      0      0      0      0      0      0 
+allocstall_normal 91305 compact_stall 2048175 compact_fail 1349959 
+-- worker
+MemFree: 14656552 kB MemAvailable: 15185924 kB Buffers: 29160 kB Cached: 3175088 kB SwapFree: 16632976 kB 
+Node 0, zone   Normal   5286  18151  27464  30016  10012  14668  11710   7997   2705    106      0      0      0      0 
+allocstall_normal 26210 compact_stall 205734 compact_fail 85518 
+== after-stop 2026-11-17T16:53:14Z
+-- head
+MemFree: 115142696 kB MemAvailable: 121946864 kB Buffers: 779888 kB Cached: 5422852 kB SwapFree: 14457920 kB 
+Node 0, zone   Normal  82250  85204  74798  67032  58577  49024  34688  23677  16425  12258   5929   1364    102      2 
+allocstall_normal 91305 compact_stall 2048175 compact_fail 1349959 
+-- worker
+MemFree: 123328804 kB MemAvailable: 123858384 kB Buffers: 29504 kB Cached: 1342304 kB SwapFree: 16654660 kB 
+Node 0, zone   Normal  47623  43863  37710  38689  25884  18453  14897  11472   8932   8028   6246   3528   1329    144 
+allocstall_normal 26210 compact_stall 205734 compact_fail 85518 
+== ready 2026-11-17T16:54:57Z
+-- head
+MemFree: 8355152 kB MemAvailable: 10960820 kB Buffers: 552704 kB Cached: 3329836 kB SwapFree: 14456196 kB 
+Node 0, zone   Normal 102664 139387 104630  76728   4313   3191   2198   1500    125     27      1      0      0      0 
+allocstall_normal 91615 compact_stall 2069500 compact_fail 1361383 
+-- worker
+MemFree: 14304620 kB MemAvailable: 14202268 kB Buffers: 23640 kB Cached: 2553292 kB SwapFree: 16653756 kB 
+Node 0, zone   Normal  25667  19610  25653  23070   6986  10498   7291   5970   3819    833      2      0      0      0 
+allocstall_normal 26237 compact_stall 208804 compact_fail 86006 

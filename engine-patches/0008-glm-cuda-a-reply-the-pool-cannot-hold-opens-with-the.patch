@@ -1,0 +1,117 @@
+From f2a74d05440cbd8fcf1d72268b97b3eaa1b56aaf Mon Sep 17 00:00:00 2001
+From: MiaAI_Lab <mia.ailab1@gmail.com>
+Date: Fri, 20 Nov 2026 01:40:23 +0200
+Subject: [PATCH 08/39] glm cuda: a reply the pool cannot hold opens with the
+ pool's longest
+
+---
+ zig/src/families/glm/cuda_lanes.zig      |  4 ++++
+ zig/src/families/glm/cuda_native.zig     |  2 +-
+ zig/src/families/glm/cuda_pages.zig      | 25 ++++++++++++++++++------
+ zig/src/families/glm/cuda_pages_test.zig | 16 +++++++++++++++
+ 4 files changed, 40 insertions(+), 7 deletions(-)
+
+diff --git a/zig/src/families/glm/cuda_lanes.zig b/zig/src/families/glm/cuda_lanes.zig
+index 2a4eac9c8..886475f58 100644
+--- a/zig/src/families/glm/cuda_lanes.zig
++++ b/zig/src/families/glm/cuda_lanes.zig
+@@ -293,6 +293,10 @@ pub const Lanes = struct {
+         const marks: []const u32 = if (share) (try share_mod.begin(self.x.e, s, &owner, &adopt)).marks else &.{};
+         var held = true;
+         errdefer if (held) gpa.free(marks);
++        if (self.x.e.pages) |p| if (p.replyFor(ids.len, s.max_new)) |capped| if (capped < s.max_new) {
++            std.log.info("kv pool: a request of {d} prompt tokens asks {d} reply tokens and opens with {d}: the pool holds no more pages", .{ ids.len, s.max_new, capped });
++            s.max_new = @intCast(capped);
++        };
+         const pages = try self.seat(s, ids.len, s.max_new, adopt.items);
+         errdefer {
+             self.x.e.release(self.lanes.get(s).?.slot);
+diff --git a/zig/src/families/glm/cuda_native.zig b/zig/src/families/glm/cuda_native.zig
+index 20c0553dd..7fd90d91b 100644
+--- a/zig/src/families/glm/cuda_native.zig
++++ b/zig/src/families/glm/cuda_native.zig
+@@ -515,7 +515,7 @@ pub fn explain(_: ?*anyopaque, err: anyerror) ?[]const u8 {
+         error.RankMismatch => "the ranks' settings differ (each rank's log names the one): start them alike",
+         error.Fp8OnPages => "--kv-cache fp8 keeps a window per stream: unset TF_KV_PAGES, or set it to auto or off",
+         error.BadKvPages => "TF_KV_PAGES: give auto, on (or 1, all) or off (or 0)",
+-        error.PoolTooSmall => "this request's prompt and max_tokens need more KV pages than the whole pool holds, even with every other stream done: shorten the prompt or lower max_tokens",
++        error.PoolTooSmall => "this request's prompt needs more KV pages than the whole pool holds, even with every other stream done: shorten the prompt, raise TENSORFOLD_MEMORY_RESERVE_GIB? No — lower it or --context to give the pool more room",
+         error.BadKvShare => "TF_KV_SHARE: give how many states the prompt store over the KV pages keeps, or 0 or unset for off",
+         error.GlmKvShareMoved => "TF_GLM_KV_SHARE is now TF_KV_SHARE, the prompt store every family on the KV pool shares: set that instead",
+         error.GlmRequestStartsWithSharedKv => "TF_GLM_REQUEST_STARTS=1 cannot be used with TF_KV_SHARE above 0: unset request starts or disable shared KV",
+diff --git a/zig/src/families/glm/cuda_pages.zig b/zig/src/families/glm/cuda_pages.zig
+index 1d9f61a5e..e87014daf 100644
+--- a/zig/src/families/glm/cuda_pages.zig
++++ b/zig/src/families/glm/cuda_pages.zig
+@@ -178,10 +178,22 @@ pub const Pages = struct {
+         return slot < p.used.len;
+     }
+ 
+-    /// Whether a request's pages fit now and a paged sequence is free for it. One that needs more pages than the whole
+-    /// pool holds is admitted at once, so its opening refuses it (error.PoolTooSmall) instead of it waiting forever.
++    /// The reply a request opens with: the asked one when its pages fit the pool, else the longest the pool holds
++    /// for its prompt (its window and run included), or null when even the prompt and its window take more pages
++    /// than the whole pool — no reply ever fits, so its opening refuses it (error.PoolTooSmall).
++    pub fn replyFor(p: *const Pages, prompt: usize, max_tokens: usize) ?usize {
++        const budget = p.pool.total();
++        if (need(p.layout, prompt, max_tokens) <= budget) return max_tokens;
++        const rows = (budget -| p.layout.runPages()) * @as(usize, p.layout.page_tokens);
++        if (prompt + fw.window_rows > rows) return null;
++        return rows - prompt - fw.window_rows;
++    }
++
++    /// Whether a request's pages fit now and a paged sequence is free for it. A reply longer than the pool holds
++    /// counts as the pool's longest (its opening takes that); a prompt that never fits even alone is admitted at
++    /// once, so its opening refuses it (error.PoolTooSmall) instead of it waiting forever.
+     pub fn fits(p: *Pages, prompt: usize, max_tokens: usize) bool {
+-        const n = need(p.layout, prompt, max_tokens);
++        const n = need(p.layout, prompt, p.replyFor(prompt, max_tokens) orelse max_tokens);
+         const free_seq = for (p.used) |u| {
+             if (!u) break true;
+         } else false;
+@@ -223,9 +235,10 @@ pub const Pages = struct {
+         if (!p.paged(slot) or p.used[slot]) return error.SlotTaken;
+         const n = need(p.layout, prompt, max_tokens);
+         if (n > tableLen(p.e.capacity) or adopted.len > n) return error.PromptTooLong;
+-        if (n > p.pool.total()) return error.PoolTooSmall; // never fits, even with every other stream done
++        const reply = p.replyFor(prompt, max_tokens) orelse return error.PoolTooSmall; // never fits, even with every other stream done
++        const m = need(p.layout, prompt, reply);
+         const l = &p.leases[slot];
+-        try p.pool.promise(l, n - adopted.len);
++        try p.pool.promise(l, m - adopted.len);
+         errdefer p.pool.finish(l);
+         if (adopted.len > 0) {
+             held = false;
+@@ -233,7 +246,7 @@ pub const Pages = struct {
+         }
+         var up: Upload = .{ .p = p, .slot = slot };
+         if (adopted.len > 0) try Upload.write(&up, l.ids.items, 0);
+-        try p.pool.cover(l, n, .{ .ctx = &up, .write = Upload.write });
++        try p.pool.cover(l, m, .{ .ctx = &up, .write = Upload.write });
+         try p.mapped(slot, l.ids.items, adopted.len);
+         return l.ids.items;
+     }
+diff --git a/zig/src/families/glm/cuda_pages_test.zig b/zig/src/families/glm/cuda_pages_test.zig
+index b07885098..afd4c396a 100644
+--- a/zig/src/families/glm/cuda_pages_test.zig
++++ b/zig/src/families/glm/cuda_pages_test.zig
+@@ -574,3 +574,19 @@ test "a request needing more pages than the whole pool is admitted at once and r
+     p.close(1);
+     try expect(p.fits(600, 100));
+ }
++
++test "a request needing more pages opens with the pool's longest reply, not a refusal" {
++    var f: Fake = undefined;
++    try f.init(std.testing.allocator);
++    const l = try pages_mod.layout(std.testing.allocator, &f.e, 0);
++    const p = try f.pool(l, 3, 4, true); // 4 pages: 2,048 rows in all
++    defer f.deinit(p);
++    try expectEqual(@as(?usize, 1016), p.replyFor(1000, 3000)); // 2,048 rows minus the prompt and its window of 32
++    try expect(p.fits(1000, 3000)); // the capped ask: the whole pool, free while nothing runs
++    try std.testing.expectEqualSlices(u32, &.{ 0, 1, 2, 3 }, try p.open(1, 1000, 1016)); // the lanes' capped ask
++    try expectEqual(@as(usize, 2048), f.e.seqs.items[1].?.st.capacity);
++    try expect(!p.fits(600, 100)); // waits: the running stream holds every page
++    p.close(1);
++    try expect(p.pool.idle() and p.pool.census().free == 4);
++    try std.testing.expectError(error.PoolTooSmall, p.open(1, 2049, 10)); // the prompt alone passes the pool's rows
++}

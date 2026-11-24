@@ -1,0 +1,47 @@
+{
+ "verdict": "PASS",
+ "void": null,
+ "checks": {
+  "answers": {
+   "ok": true,
+   "detail": "1/1 found strictly, 0 errors"
+  },
+  "length": {
+   "ok": true,
+   "detail": "prompt_tokens [519320] vs floor 500000"
+  },
+  "admission": {
+   "ok": true,
+   "detail": "max running 1, max waiting 0, 86 samples"
+  }
+ },
+ "info": {
+  "ttft_s": 424.5,
+  "prefill_tok_s": 1223.3,
+  "exact_form": [
+   true
+  ],
+  "finish_reason": [
+   "stop"
+  ],
+  "cold": true,
+  "decode_tok_s": [
+   37.21
+  ],
+  "completion_tokens": [
+   9
+  ],
+  "server_counters": {
+   "mtp_drafted_total": 8.0,
+   "mtp_accepted_total": 4.0,
+   "decode_rounds_total": 4.0,
+   "generation_tokens_total": 9.0,
+   "acceptance": 0.5,
+   "tokens_per_round": 2.25
+  },
+  "median_decode_tok_s": 37.21
+ },
+ "per_line": 25.247,
+ "window": 524288,
+ "resume_turn": false
+}

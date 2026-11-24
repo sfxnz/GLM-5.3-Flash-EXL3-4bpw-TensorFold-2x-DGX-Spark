@@ -1,0 +1,49 @@
+From 9c17548f9f4078e1b7f279d3dd8044b847286c80 Mon Sep 17 00:00:00 2001
+From: ashhart <71890694+ashhart@users.noreply.github.com>
+Date: Sun, 22 Nov 2026 04:02:40 +0000
+Subject: [PATCH 28/39] GLM CUDA: skip sparse-overwritten dense rows
+
+---
+ zig/src/families/glm/cuda_dsa_block.zig | 9 +++++----
+ 1 file changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/zig/src/families/glm/cuda_dsa_block.zig b/zig/src/families/glm/cuda_dsa_block.zig
+index bddaf42ca..1b80f5d22 100644
+--- a/zig/src/families/glm/cuda_dsa_block.zig
++++ b/zig/src/families/glm/cuda_dsa_block.zig
+@@ -164,12 +164,13 @@ pub fn attend(k: Kernels, stream: cuda.Stream, l: Layer, c: Caches, s: Scratch,
+     const t, const tk = try tables(l, c);
+     const scale: f32 = @floatCast(std.math.pow(f64, @floatFromInt(l.qk), -0.5));
+     if (host_pos < l.dense_limit) {
++        const dense_rows = @min(rows, l.dense_limit - host_pos);
+         const stamp = prof.span(k.prof, stream, .mla);
+         var dc = c;
+         if (c.pks != 0) if (kv_host.active) |*g| { // host rows: the visible ones, in order, into the slots
+             dc = .{ .lc = try g.visible(k.ops, stream, c.lc, c.pt, t.page_rows, pos, rows, l.dense_limit + rows), .ik = c.ik, .ig = c.ig, .pk = c.pk, .pk_rows = c.pk_rows };
+         };
+-        try denseAttention(k, stream, l, dc, v, pos, rows, nch, part_rows, scale);
++        try denseAttention(k, stream, l, dc, v, pos, dense_rows, nch, part_rows, scale, latent.headBlock(rows));
+         stamp.end();
+     }
+     if (sparseRows(l, host_pos, rows)) {
+@@ -206,8 +207,9 @@ pub fn attendOnly(k: Kernels, stream: cuda.Stream, l: Layer, c: Caches, s: Scrat
+     v.ol = ol;
+     const scale: f32 = @floatCast(std.math.pow(f64, @floatFromInt(l.qk), -0.5));
+     if (host_pos < l.dense_limit) {
++        const dense_rows = @min(rows, l.dense_limit - host_pos);
+         const stamp = prof.span(k.prof, stream, .mla);
+-        try denseAttention(k, stream, l, c, v, pos, rows, nch, part_rows, scale);
++        try denseAttention(k, stream, l, c, v, pos, dense_rows, nch, part_rows, scale, latent.headBlock(rows));
+         stamp.end();
+     }
+     if (sparseRows(l, host_pos, rows)) {
+@@ -271,8 +273,7 @@ fn attendLastRow(k: Kernels, stream: cuda.Stream, l: Layer, c: Caches, s: Scratc
+ }
+ 
+ /// forward.dense_attention: latent.attention in `part_rows`-row blocks, each at its first row's position.
+-fn denseAttention(k: Kernels, stream: cuda.Stream, l: Layer, c: Caches, s: Scratch, pos: u64, rows: usize, nch: usize, part_rows: usize, scale: f32) !void {
+-    const hb = latent.headBlock(rows);
++fn denseAttention(k: Kernels, stream: cuda.Stream, l: Layer, c: Caches, s: Scratch, pos: u64, rows: usize, nch: usize, part_rows: usize, scale: f32, hb: usize) !void {
+     var r0: usize = 0;
+     while (r0 < rows) : (r0 += part_rows) {
+         const n = @min(part_rows, rows - r0);

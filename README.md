@@ -1,8 +1,8 @@
-# GLM-5.3-Flash EXL3 4bpw · TensorFold 1.2.5 · 2× DGX Spark
+# GLM-5.3-Flash EXL3 4bpw · TensorFold (Patched) · 2× DGX Spark
 
-Serve [sfxnz/GLM-5.3-Flash-EXL3-4bpw](https://huggingface.co/sfxnz/GLM-5.3-Flash-EXL3-4bpw) across two NVIDIA DGX Spark (GB10) nodes at tensor parallel 2, with the stock [TensorFold](https://github.com/ashhart/TensorFold) 1.2.5 release and its native CUDA GLM family. No fork and no patches. Vision, thinking and MTP speculative decoding are on by default. Up to 8 requests run at once, and one request can use a 1,048,576-token window.
+Serve [sfxnz/GLM-5.3-Flash-EXL3-4bpw](https://huggingface.co/sfxnz/GLM-5.3-Flash-EXL3-4bpw) across two NVIDIA DGX Spark (GB10, `sm_121`) nodes at tensor parallel 2 over the direct RoCE cable, with our Apache-2.0 engine patch series (`engine-patches/` on `ashhart/TensorFold@81de26f64` overlaid onto the `1.2.10` runtime image via `docker/Dockerfile.patched`). Vision, thinking, DFlash2 speculative decoding, sharded FP8 paged KV (`TF_GLM_KV_SHARD=1`), zero-copy multi-turn prompt sharing (`TF_KV_SHARE=16`), tensor-core MLA prefill (`TF_GLM_ABSORB_MMA=1`), and parallel GPU load (`TF_GLM_FAST_LOAD=1`) are on by default.
 
-Several agents or subagents can share the pair as if it were a hosted API. Each conversation's prompt stays in the KV pool between turns (`TF_KV_SHARE`), so a follow-up turn starts in about 2 s instead of reading the whole conversation again. Tool-call arguments stream as the model writes them, on `/v1/chat/completions` and on the Anthropic-shaped `/v1/messages`. An optional key file closes the port to clients without a key.
+Several agents or subagents can share the pair simultaneously with **3.06M–4.00M tokens of resident paged FP8 KV** (5–7 × 524K windows at once under a 10.5 GiB host reserve). Each conversation's prefix stays in per-part sharded radix KV pages between turns (`TF_KV_SHARE=16`), so follow-up turns — even four concurrent 519K-token sessions — resume in **1.6–6.1 s** instead of cold-prefilling. Tool-call arguments stream on `/v1/chat/completions` and `/v1/messages`, and an optional key file closes the port to unauthenticated clients.
 
 ```sh
 git clone https://github.com/sfxnz/GLM-5.3-Flash-EXL3-4bpw-TensorFold-2x-DGX-Spark
@@ -11,24 +11,86 @@ cd GLM-5.3-Flash-EXL3-4bpw-TensorFold-2x-DGX-Spark
 ./stop.sh
 ```
 
-Every number below comes from a file under `evidence/`.
+Every number below comes from a verified file under `evidence/` (both Sparks GPU-locked at 2,200 MHz, quiet host `other < 1.1` cores, `swapout = 0`).
 
-## At a glance
+## At a glance: v4 (`V6-m4`) vs stock 1.2.5 baseline
 
-| | Default | Evidence |
-|---|---|---|
-| 1 stream | 35.4 tok/s (range 32.0 to 36.2); 34.7 on a second boot | `evidence/knobs/v2-default/bench.json`, `v125-share16/bench.json` |
-| Aggregate, 4 streams | 49.4 tok/s (48.2 to 52.1); 45.9 on a second boot | same |
-| Aggregate, 8 streams | 60.7 tok/s (58.9 to 61.8), TTFT 0.80 s; 51.7 on a second boot with a busier head | same |
-| Follow-up turn, 8 agents at once with ~48k-token prompts | 2.6 s to first token at the median, against 414 s for the cold first turn | `evidence/knobs/v125-share16/agents-c8.json` |
-| Second turn of a 405k-token conversation | 2.27 s to first token, against 382 s cold | `evidence/knobs/v125-share16/agents-400k.json` |
-| Longest prompt answered | a needle found at 1,047,584 tokens, 830 tok/s prefill | `evidence/knobs/v2-default/needle.jsonl` |
-| Quality | the same logprobs as the 1.2.2 default on all 178,793 tokens of `nll-corpus-v1` | `evidence/knobs/v2-default/nll.txt`, `v125-default/nll-vs-122.txt` |
-| MTP acceptance | 0.61 at 1 stream, 0.43 at 4 and 8 | `evidence/knobs/v2-default/bench.json` |
-| `tests/smoke.py` | 10 of 10, and 11 of 11 with an API key | `evidence/knobs/v2-default/smoke.txt`, `v125-final-keyed/smoke.txt` |
-| Load time after the first boot | `ready after 145s` | `evidence/knobs/v2-default/run.txt` |
+### Honesty anchor (strict `T=1.0`, thinking off, `vbench.py` / `gpanel.py`, `PARALLEL=4`)
 
-Rates are aggregate tok/s, medians of 5 runs of 512 tokens after 1 warmup run, thinking off. The two boots differ by up to 15% at 8 streams. The head ran other users' jobs during the slower one. The 1.2.2 default measured 33.8, 45.5 and 58.8 on Nov 5, so the speed is the same within what our boots can resolve (see [Speed knobs](#speed-knobs)). What changed is the agent experience. Follow-up turns resume from kept state, tool calls stream, and `/v1/messages` and optional keys are new.
+| Metric | Stock 1.2.5 default | `L2-1210-fp8win` | **Current (`V6-m4`)** | Gain vs 1.2.5 | Evidence |
+|---|---|---|---|---|---|
+| Warm boot (`loaded in` / `ready_s`) | 97–107 s | 162 s | **37.9 s** (43 s ready) | **−61% (−2.6×)** | `evidence/opt-v4/best-config.json`, `configs/V6-m4.json` |
+| Resident KV pool (`10.5 GiB` reserve) | 2,117–2,315 BF16 pages (1.1M tok) | 4 × 524K fixed windows (`KV_SHARE=0`) | **5,984–7,809 sharded FP8 pages (3.06M–4.00M tok, 5–7×524K + `KV_SHARE=16`)** | **+2.8–3.5× capacity** | `evidence/opt-v4/gates/results/V6-m4/soak/summary.json`, `V6-m3-clean` |
+| Short TTFT | ~195 ms | 150 ms | **134.8 ms** | **−31%** | `evidence/opt-v4/best-config.json` |
+| C1 prose decode (strict `T=1.0`, thinking off) | 34.4 tok/s | 34.18 tok/s | **40.30 tok/s** med (peak **42.55**; `41.06` on `V6-m3-clean`) | **+17–19%** | `evidence/opt-v4/best-config.json`, `configs/V6-m3-clean.json` |
+| C4 prose aggregate (strict `T=1.0`, thinking off) | 45.9–49.4 tok/s | 47.0 tok/s | **67.14 tok/s** clean med (peak **68.15**; mixed **69.43**) | **+36–46%** | `evidence/opt-v4/best-config.json` |
+| K1 code decode (strict `T=1.0`, thinking off) | 38.5–40.1 tok/s | 40.93 tok/s | **54.74 tok/s** med (peak **58.55**, 77.8% accept, 3.55 tok/rd) | **+37–42%** | `evidence/opt-v4/best-config.json` |
+| Cold prefill — 4K / 32K / 162K / 262K (`shx=false` v1 pack) | — / 1,062 / 1,092 / 830 (1M) | 1,144 / 1,282 / — / 1,252 | **1,463.5 / 1,622.6 / 1,614.7 / 1,613.8 tok/s** | **+53% at 32K** (flat to 262K) | `evidence/opt-v4/best-config.json`, `runs/V6-m3-community/results.json` |
+| 4 × 500K concurrent soak + Turn-2 resume (G5) | OOM / queued | No `KV_SHARE` (window mode) | **PASS: 4/4 strict, `max waiting 0`, 4/4 Turn-2 kept (`518,144` cached each, TTFT 1.6–6.1 s)** | Unblocked | `evidence/opt-v4/gates/results/V6-m4/soak/summary.json` |
+| Multi-turn agents (G6: 4×48K + 405K) | 12/12 C4 (1.71 s), 405K (2.27 s) | Broken (`KV_SHARE=0`) | **PASS: 12/12 C4 (1.59 s med), 405K cached 403,456 (2.61 s)** | Faster C4 resume | `evidence/opt-v4/gates/results/V6-m4/turns.verdict` |
+| Quality NLL vs BF16 `v125-a1` (G2, 178,793 tok) | 0.00000 (ref) | +0.00054 | **PASS: +0.00037 [-0.00059, +0.00123]** (top-1 `0.9769`, margin `0.002`) | Lossless within gate | `evidence/opt-v4/gates/results/V6-m4/nll.verdict` |
+| Long-context needles (G3 250K / G4 500K) & `tests/smoke.py` | 1/1, 10/10 | 1/1 | **PASS: 250K 1/1 (`1,584 tok/s`), 500K 1/1 (`37.2 tok/s` dec), `smoke.py` 10/10** | Full qualification | `evidence/opt-v4/gates/results/V6-m4/` |
+
+### Community-comparable benchmarks (`T=0.7`, greedy, thinking on/off, code, `C1` / `C4` / `C8`)
+
+Captured with identical decode kernels at `PARALLEL=8` (still **6,776 sharded FP8 pages = 3.47M tokens = 6×524K** resident, `37.4 s` load, `0` swapout; `evidence/opt-v4/runs/V6-m3-community/results.json`):
+
+| Workload | Temperature / Thinking | C1 decode | C4 aggregate decode | C8 aggregate decode |
+|---|---|---|---|---|
+| Prose (greedy) | `T=0.0`, thinking off | **43.32 tok/s** (`42.69` e2e) | **75.09 tok/s** (`74.71` e2e) | **88.96 tok/s** (`11.51`/stream) |
+| Prose (`T=0.7`) | `T=0.7`, thinking off | **43.63 tok/s** (`42.85` e2e) | **71.10 tok/s** (`18.27`/stream) | **83.88 tok/s** (`11.15`/stream) |
+| Prose (`T=0.7`, thinking on) | `T=0.7`, thinking on | **38.47 tok/s** (`38.21` e2e) | **72.67 tok/s** (`18.62`/stream) | **91.77 tok/s** (`12.63`/stream, `101` peak) |
+| Code (greedy) | `T=0.0`, thinking off | **52.30 tok/s** (`51.34` e2e) | **73.70 tok/s** (`23.99`/stream med) | **95.40 tok/s** (`14.59`/stream, `116.7` peak) |
+
+> **Why `TF_GLM_SHARED_GRAPHS=0` is the default on GB10:** `engine-patches/` supports CUDA-graphing both lone verify windows and multi-stream shared verify windows (`TF_GLM_SHARED_GRAPHS=1`). On GB10's unified LPDDR5X, C4 verify is ~98% memory-bandwidth bound: graphing shared windows trims only ~1.4 ms/round while pinning +1.72 GiB of unswappable graph memory that caused host swapout during C4. Keeping lone verify + DFlash2 drafter graphs on (`TF_GLM_GRAPHS=1 TF_GLM_DRAFT_GRAPHS=1`) and `TF_GLM_SHARED_GRAPHS=0` preserves the exact same `109.5 ms/round` C4 speed (via our device-table contiguous `.give` 1-send/1-recv exchange + batched `drawShared` / `top1_rows`) with **0 MiB runtime swapout** and **98.98 GiB peak memory**.
+
+## Building the patched image (`engine-patches/`)
+
+`engine-patches/` holds the complete 39-patch Apache-2.0 series against `ashhart/TensorFold@81de26f649677aa72ae0034d4af6e010cd947038` (`engine-patches/BASE`, `engine-patches/series`). To rebuild `tf-glm53:1.3.0-v6m4` from source on a DGX Spark (requires Zig 0.17.0 and CUDA 13.0 `nvcc`):
+
+```sh
+# 1. Build the base runtime image (TensorFold 1.2.10 libs + libjpeg-turbo 3.1.4.1 + libwebp 1.6.0)
+docker build -t tf-glm53:1.2.10 docker
+
+# 2. Apply engine-patches/ to TensorFold@81de26f64 and build tensorfold-native for GB10 (sm_121)
+git clone https://github.com/ashhart/TensorFold tf-src && cd tf-src
+git checkout 81de26f649677aa72ae0034d4af6e010cd947038
+git am ../engine-patches/*.patch
+zig build -Dgpu=spark -Dnvcc=/usr/local/cuda-13.0/bin/nvcc -Doptimize=ReleaseFast
+cd ..
+
+# 3. Overlay the built binary onto tf-glm53:1.2.10 and copy to spark2
+BIN_SHA=$(sha256sum tf-src/zig-out/native/bin/tensorfold-native | awk '{print $1}')
+PATCH_SHA=$(cd engine-patches && sha256sum $(cat series) | sha256sum | awk '{print $1}')
+docker build -f docker/Dockerfile.patched --build-context engine=tf-src/zig-out/native/bin \
+  --build-arg BASE_IMAGE=tf-glm53:1.2.10 --build-arg BIN_SHA256="$BIN_SHA" --build-arg PATCHES="$PATCH_SHA" \
+  -t tf-glm53:1.3.0-v6m4 docker
+docker save tf-glm53:1.3.0-v6m4 | ssh spark2 docker load
+```
+
+Fetch the optional DFlash2 drafter separately into `$HF_CACHE` on both nodes (run.sh never downloads it; verify its license in `NOTICE`):
+
+```sh
+hf download incoai/GLM-5.3-Flash-DFlash2 --revision 7d74cdd881ed7e32c31175984a67823127b66cfe --cache-dir "$HOME/.cache/huggingface/hub"
+```
+
+To serve without DFlash2 (target MTP drafting, unsharded FP8 pages), override `DRAFTER=""` and remove `TF_GLM_KV_SHARD=1` from `EXTRA_ENV`. For optional NVMe-backed prompt-state spill across evictions, TensorFold supports `--learn-conversations` (refused only with `TF_GLM_REQUEST_STARTS=1`).
+
+## Phase 4 Roadmap: v2 `shx=true` MIT EXL3 Re-Quantization
+
+Our current v1 pack (`sfxnz/GLM-5.3-Flash-EXL3-4bpw@d75e26a4`) was encoded with stock `exllamav3 v1.6.6`, which writes a unique Hadamard sign vector `suh` per routed expert (`shx=false`). In TensorFold's EXL3 prefill path (`exl3_prompt.zig`), `shx=false` forces **16× more Hadamard rotations** on prefill activations and **+240 MiB scratch per rank**, capping cold prefill at **1,623 tok/s** even with `ABSORB_MMA`, `CHUNK_SOLO=4096`, `0009+0080` packed `glm_mm`, and `0078` K12 prompt experts.
+
+Rather than hacking around `shx=false` in engine code, the clean Phase 4 v2 pack (`sfxnz/GLM-5.3-Flash-EXL3-4bpw` v2, 100% MIT) should be re-encoded from `zai-org/GLM-5.3-Flash-BF16@f9fed3bb` with:
+
+1. **Shared per-layer `suh` (`shx=true`):** Enforce a single shared `suh` vector per MoE layer across all 288 experts' `gate_proj` and `up_proj` weights so TensorFold automatically takes its single-rotation `shx=true` EXL3 prompt path — projected **1,850+ tok/s** cold prefill and **−240 MiB** scratch per rank (unlocking +140 more KV pages per Spark).
+2. **In-domain calibration (`≥ 500` rows, `--moe_affinity_eps 0.01`):** Replace stock `exllamav3`'s generic 250-row mix with ≥ 500 rows of in-domain chat, code, reasoning, and tool-use traces while keeping `--moe_affinity_eps 0.01` and `BF16` non-expert tensors byte-identical to `zai-org/GLM-5.3-Flash-BF16`.
+3. **Quality target:** `KLD < 0.024` nats on the 25-window `malaiwah/glm53-flash-fidelity-root-v1` BF16 panel (beating TR3's `0.0256` and FP8-sourced quants while remaining 100% MIT).
+
+---
+
+## Historical v1.2.5 baseline & methodology (preserved)
+
+The sections below document the original stock 1.2.5 bring-up, requirements, API, quality capture, quant construction, and earlier tuning trail preserved under `evidence/`.
 
 ## What it serves and why
 
@@ -52,11 +114,11 @@ VALIDATE_ONLY=1 ./run.sh   # read-only: every check, both docker argvs, exit 1 i
 3. Copies the image to the worker with `docker save | ssh docker load` over the direct link when the two image IDs differ, then checks that they match.
 4. Downloads the pack at the pinned revision with `hf download` into `HF_CACHE` on the head, and checks the shard count and total bytes. The pack is 175,642,102,880 bytes in 120 shards.
 5. Copies the snapshot to the worker with `rsync -aL` over the direct link when the worker's copy is incomplete, and checks it again there.
-6. Checks the ports and the memory gate, starts rank 1 on the worker, then rank 0 on the head, and waits for `/health`.
+6. Checks the ports and the memory gate, starts rank 1 on the worker, then rank 0 on the head, and waits for `/health`. Both ranks mount the docker volume `tf-glm53-cache` (`ENGINE_CACHE`), where the engine keeps the sha256 of every shard.
 
-When `/health` answers, `run.sh` prints rank 0's startup lines and the endpoint. From a fresh clone, with nothing cached, `./run.sh` took 34 min 57 s: the HF download, the copy to the worker and the load (`evidence/run/fresh-clone/run.txt`). Later boots take about 2.5 min.
+When `/health` answers, `run.sh` prints rank 0's startup lines and the endpoint. From a fresh clone, with nothing cached, `./run.sh` took 34 min 57 s: the HF download, the copy to the worker and the load (`evidence/run/fresh-clone/run.txt`). The first boot with the volume hashes the pack, 163.6 GiB in 50 s on each rank, and was ready after 151 s. The eleven boots after it read the hashes back in 0.1 s and were ready after 97 to 107 s (`evidence/opt-v3/boots.tsv`, and each run's `boot.log`). `docker volume rm tf-glm53-cache` on each node drops it.
 
-**Restart once after the first download.** On that first boot, 8 streams ran at 36.8 to 41.3 tok/s aggregate instead of about 59, while 1 stream ran at full speed. A plain `./stop.sh && ./run.sh` brought it to 59.7 (`evidence/run/fresh-clone/bench-first-boot.json`, `first-boot-c8-rerun.txt`, `bench-after-restart.json`). We saw this once, on a boot that followed 176 GB of new writes on both nodes, and have not traced the cause. The worker's memory-compaction thread `kcompactd` was busy during the slow runs.
+**Restart once after the first download.** On that first boot, 8 streams ran at 36.8 to 41.3 tok/s aggregate instead of about 59, while 1 stream ran at full speed. A plain `./stop.sh && ./run.sh` brought it to 59.7 (`evidence/run/fresh-clone/bench-first-boot.json`, `first-boot-c8-rerun.txt`, `bench-after-restart.json`). We saw this once, on a boot that followed 176 GB of new writes on both nodes, and have not traced the cause. The worker's memory-compaction thread `kcompactd` was busy during the slow runs. On Nov 17 we tried to bring it back and could not. A boot on top of 9.4 GiB of stale page cache ran 8 streams at 59.7 tok/s while the head was quiet, and at 39.4 to 55.5 while other work held 7 to 8 of the head's cores (`evidence/opt-v3/p1-125/gated2.txt`). Compacting memory before the load changed nothing we could measure (`evidence/opt-v3/n1-125/`, `d3-125/`). So check what else the head is running before you restart.
 
 To stop:
 
@@ -116,6 +178,8 @@ If both ranks already run and `/health` answers, `run.sh` prints the endpoint an
 | `PROMPT_CACHE_GIB` | empty | `--prompt-cache-gib`. Empty leaves the split to the engine. See [Capacity](#capacity-one-shared-pool-with-kept-conversations). |
 | `VIDEO_TOKENS` | `64` | `--vision-video-tokens`, the rows each stream sets aside for video. The engine's default is 16,384, but the image cannot decode video. |
 | `INDEX_CUDA` | `0` | `TF_GLM_INDEX_CUDA`. `1` was measured slower on a 524k prompt and is not the default. |
+| `ENGINE_CACHE` | `tf-glm53-cache` | A docker volume on each node, mounted at `/root/.cache/tensorfold`. The engine keeps the shards' sha256 there, so later boots skip 50 s of hashing. Empty mounts nothing. |
+| `EXTRA_ENV`, `EXTRA_ARGS` | empty | For trials: more engine variables (`VAR=VALUE`, space-separated) and more serve flags, the same on both ranks. |
 | `API_KEY_FILE` | empty | `--api-key-file`. An absolute path to a mode-600 key file at the same path on both nodes. Empty serves without keys. |
 | `WORKER` | `spark2` | The worker's ssh name. |
 | `IFACE` | `enp1s0f1np1` | The direct-link interface. NCCL binds to it. |
@@ -128,7 +192,7 @@ If both ranks already run and `/health` answers, `run.sh` prints the endpoint an
 
 `VALIDATE_ONLY=1 ./run.sh` runs every check without writing anything. It prints the config, each check as `ok` or `REFUSE`, each action it would take as `WOULD`, and both ranks' full `docker run` argvs. It exits 1 if `run.sh` would refuse.
 
-Both ranks get the same serve argv from one function, `rank_argv` in `run.sh`. Only `TF_GLM_RANK` and the container name differ, because the ranks compare their settings at startup and refuse to serve on a mismatch. The serve flags are `--context`, `--parallel`, `--vision`, `--vision-video-tokens`, `--name`, `--host`, `--port` and `--no-update-check`, plus `--prompt-cache-gib` and `--api-key-file` when their variables are set. The engine variables are the NCCL and RoCE ones plus `TF_GLM_DENSE_BITS`, `TF_GLM_HEAD_BITS`, `TENSORFOLD_MEMORY_RESERVE_GIB`, `TF_GLM_INDEX_CUDA` and `TF_KV_SHARE`. The engine's own defaults set the rest. They are BF16 KV pages (`cache bf16` in `evidence/knobs/d8h8-p8-1m/boot.log`), thinking on (`evidence/run/smoke-final.txt`, check `models`), MTP drafts on, and sampling at temperature 1.0 and top_p 0.95 (`evidence/run/boot-final.txt`).
+Both ranks get the same serve argv from one function, `rank_argv` in `run.sh`. Only `TF_GLM_RANK` and the container name differ, because the ranks compare their settings at startup and refuse to serve on a mismatch. The serve flags are `--context`, `--parallel`, `--vision`, `--vision-video-tokens`, `--name`, `--host`, `--port` and `--no-update-check`, plus `--prompt-cache-gib`, `--api-key-file` and the words of `EXTRA_ARGS` when their variables are set. The engine variables are the NCCL and RoCE ones plus `TF_GLM_DENSE_BITS`, `TF_GLM_HEAD_BITS`, `TENSORFOLD_MEMORY_RESERVE_GIB`, `TF_GLM_INDEX_CUDA` and `TF_KV_SHARE`. The engine's own defaults set the rest. They are BF16 KV pages (`cache bf16` in `evidence/knobs/d8h8-p8-1m/boot.log`), thinking on (`evidence/run/smoke-final.txt`, check `models`), MTP drafts on, and sampling at temperature 1.0 and top_p 0.95 (`evidence/run/boot-final.txt`).
 
 ## API
 
@@ -244,7 +308,7 @@ prompts in passes of up to 2048 rows, 16 kept states' slots (2.8 GiB) and the pr
 
 - The pool is 2,315 pages of 512 rows on that boot, which is 1,185,280 tokens, in 14.41 GiB on each rank. The engine sizes it from the memory free at load, so other boots got 2,117 to 2,276 pages (`evidence/knobs/v125-share16/boot.log`, `v125-final-keyed/boot.log`). The 1M window always fits first.
 - That is 13,056 bytes a token on each rank. TP=2 does not halve it, because each rank holds the whole MLA latent (`evidence/decisions.tsv`, row `scope` 15:56:30).
-- Each of the 16 kept states needs a slot of 175 MiB beside its pages. If a boot has less room, the startup line names fewer slots (`N of TF_KV_SHARE=16 kept states' slots`) and the `--prompt-cache-gib` that would hold all 16.
+- Each of the 16 kept states needs a slot of 175 MiB beside its pages. If a boot has less room, the startup line names fewer slots (`N of TF_KV_SHARE=16 kept states' slots`) and the `--prompt-cache-gib` that would hold all 16. `run.sh` prints the engine's warning with the count when the pair is ready. On Nov 17 the head ran other work, the memory left at load was 15.6 to 18.1 GiB, and twelve boots kept 7 to 16 states, five of them all 16 (`evidence/opt-v3/boots.tsv`).
 - When requests together need more than the pool, they wait for pages. A busy pool can drop an idle conversation's kept state, and its next turn then reads its prompt again. The engine warns at startup that with fewer than 4 kept states a stream, `live streams evict each other's before a resume`, and suggests `KV_SHARE=32` with `--prompt-cache-gib 6`. In our 8-client run no state was dropped. That does not fit beside the 1M window, so the recipe keeps 16. To keep more conversations, lower `CONTEXT` and raise both.
 - Three concurrent prompts of 416,767 tokens, 1.25M together, all came back correct on 1.2.2, finishing at 459 s, 854 s and 1,208 s (`evidence/run/pool-overcommit/`).
 - Host MemAvailable stayed at 8.8 GiB or more on the head and 12.9 GiB on the worker during the NLL run, the smoke run and the 1M needle on the default (`evidence/knobs/v2-default/memavail.txt`). During the 8-agent run it fell to 8.4 GiB on the head, which was also running another user's jobs, and stayed at 14.0 GiB on the worker (`evidence/knobs/v125-share16/memavail.txt`).
@@ -255,6 +319,8 @@ prompts in passes of up to 2048 rows, 16 kept states' slots (2.8 GiB) and the pr
 |---|---|---|---|
 | 4 | 202 s | 1.7 s | 12 of 12 |
 | 8 | 414 s | 2.6 s | 24 of 24 |
+
+On Nov 17 the 8-client run gave the same on a boot with all 16 states: 389 s cold, 2.5 s resumed, 24 of 24 (`evidence/opt-v3/f1-125/agents.txt`). One client alone resumed in 1.49 s (`evidence/opt-v3/z1-125/resume.txt`).
 
 A few resumed turns took 10 to 98 s although their prefix was kept. Each one waited for another client's cold prefill, because a prompt pass holds the GPU for its 2,048 rows. A single conversation of 405,390 tokens took 382 s cold, and its second turn started in 2.27 s with 403,456 tokens cached (`agents-400k.json`). On 1.2.2 without `KV_SHARE`, rank 0 logged `prompt cache: kept nothing at 415744 tokens` for a prompt that long.
 
@@ -293,6 +359,71 @@ On 1.2.5, each row adds to the one above it. NLL is against the 1.2.5 default's 
 Speeds are aggregate tok/s, medians of 5 runs of 512 tokens with thinking off (`tools/bench.py`; the 1.2.5 runs after 1 warmup run). Each row is one boot unless it lists two.
 
 The 1.2.5 runs shared the head with another user's jobs, at load averages of 2 to 11 on 20 cores. Even the 1.2.2 control reached only 50.9 tok/s at 8 streams that day, against 58.8 on Nov 5. So compare 1.2.5 rows with the same-day control, not with the 1.2.2 table. One boot cannot resolve differences under about 5% at 1 stream or about 10% at 4 and 8. By that rule, 1.2.5 matches 1.2.2 at 1 stream, and the 4- and 8-stream gaps are inconclusive. Both HCAs measured 58.8 and 51.7 at 8 streams on two boots, against 46.4 and 49.4 with one. That is not worse, and we do not claim it is faster. Per-run numbers, ranges and boot logs are in `evidence/knobs/<config>/` and `evidence/bench/`. At 4 streams the default's range (44.6 to 48.8) overlaps the baseline's (39.7 to 45.8), so call that gain small.
+
+**TensorFold 1.2.9 was tried on Nov 17 and is not the default.** It reads cold prompts faster, keeps fewer conversations, and decodes at the same speed. Each run is tagged with the cores other processes used on the head, and a cell is the median of the runs under 6 such cores (`evidence/opt-v3/panels.txt` has the counts, `<run>/gated.json` every run):
+
+| Config | 1 stream, prose: sampled, greedy | 1 stream, code: sampled, greedy | 8 streams, prose | Cold 32k prompt |
+|---|---|---|---|---|
+| 1.2.5 default, two boots | 34.4 and 34.4, 35.7 and 36.3 | 38.5 and 40.1, 44.9 and 45.3 | 59.1 | 1,062 |
+| 1.2.9, `INDEX_CUDA=1` (its own default) | 34.6, 36.0 | 42.1, 44.9 | 58.6 | 1,291 |
+| the same, `--mtp-confidence 0.5` | 34.4, 37.5 | 42.5, 46.3 | 59.2 | 1,306 |
+| the same, `--mtp-confidence 0.7` | 34.4, 37.0 | 39.3, 45.5 | | |
+| `--mtp-confidence 0.5`, `TF_GLM_KV_LIVE_HALF=1` | 35.5, 37.0 | 40.4, 45.9 | 57.5 | 1,251 (1,302 and 1,200) |
+| the same with the DFlash2 drafter | refused at load | | | |
+
+Rates are aggregate tok/s over runs of 512 tokens with thinking off, 3 or 4 runs a cell at 1 stream and 2 or 3 at 8. The last 1.2.9 row passed the gates: the same logprobs as the 1.2.5 default on all 178,793 tokens, `tests/smoke.py` 10 of 10, a needle found at 544,263 tokens and one at 1,047,584 (`evidence/opt-v3/e7b-129m5h/nll.txt`, `smoke.txt`, `needle-half.jsonl`, `needle.jsonl`).
+
+- **Decode did not change.** Sampled prose and 8 streams are the same within 3%, and sampled code differs less between the engines than between two boots of one. `--mtp-confidence 0.5` moves greedy text only, by 2 to 5%, with the same replies to four fixed prompts at 0.5 and 0.7 (`e8-129m7/greedy.json`, `e7b-129m5h/greedy.json`).
+- **Cold prompts are faster up to about half the window.** 1,238 tok/s at 7,908 tokens against 1,039, 1,200 to 1,308 at 32k against 1,062 to 1,087, 1,218 at 133,363 against 1,092, and the needle at 544,263 tokens in 501 s against 612 s (`e7b-129m5h/gated.json`, `needle-half.jsonl`, `base-7day/prefill.txt`; `evidence/knobs/v125-video64/needle.jsonl`). At the full window it was not: 1,314 s against 1,262 s, with other work on the head at 10 to 16 cores for about 6 of its 22 minutes (`e7b-129m5h/needle.jsonl`, `head-other-cores.txt`). `INDEX_CUDA=0` was not measured apart on a quiet head, so this is 1.2.9 with its own indexer, not either alone.
+- **It keeps fewer conversations, and that is what agents feel.** 1.2.9's model is 83.33 GiB a rank against 82.95 and each stream's fixed part 264 MiB against 212, so less is left for kept states: 1 to 10 of 16 on ten boots, against 7 to 16 on twelve boots of 1.2.5 (`boots.tsv`). `TF_GLM_KV_LIVE_HALF=1` shrinks a state's slot from 225 MiB to 160 and does not make up the difference. One 1.2.9 boot in eleven was refused at load for memory (`e7-129m5h/run.txt`).
+
+| 8 agents, 4 turns, ~48k-token prompts | 1.2.5 default | 1.2.9, ten minutes later | 1.2.9, a busier boot |
+|---|---|---|---|
+| Memory left at load, kept states | 17.1 GiB, 16 | 15.9 GiB, 8 | 15.5 GiB, 5 |
+| Cold turn, median TTFT | 389 s | 293 s | 286 s |
+| Resumed turn, median TTFT | 2.5 s | 17.8 s | 118 s |
+| Resumed turns that found their prefix kept | 24 of 24 | 18 of 24 | 9 of 24 |
+| The whole run | 478 s | 575 s | 1,032 s |
+
+(`f1-125/`, `e9-129/` and `e7b-129m5h/`, each with `agents.json` and `boot.log`.) The restore itself is not slower: one client alone resumed in 1.13 s on 1.2.9 and 1.49 s on 1.2.5 (`g1-129/resume.txt`, `z1-125/resume.txt`). With 8 clients and too few kept states, the turns that lost their prefix read 48k tokens again and the others wait behind those passes. So the cold turn's 25% is real, and the recipe still stays on 1.2.5 until the head has the memory for 16 states on 1.2.9, about 17.3 GiB left at load. To repeat the trial:
+
+```sh
+IMAGE=tf-glm53:1.2.9 TF_VERSION=1.2.9 TF_SHA256=91e90c489bef3d217c2d3d51ce34d2a9a160ffc46b36e8b25026016b90f32f04 \
+  INDEX_CUDA=1 EXTRA_ARGS="--mtp-confidence 0.5" EXTRA_ENV=TF_GLM_KV_LIVE_HALF=1 ./run.sh
+```
+
+## What limits the speed
+
+On Nov 17 we worked out what the two GB10s allow and looked for the gap. The arithmetic is in `evidence/opt-v3/ceilings.md`, the runs in `evidence/opt-v3/<run>/`, and the scripts that made them in `evidence/opt-v3/harness/`.
+
+| | Measured on the default | Bound | Share of the bound |
+|---|---|---|---|
+| A decode round, 1 stream | 52 to 56 ms | 44 ms: 9.98 GB of weights read on each rank at 225 GB/s | 79 to 85% |
+| A decode round, 8 streams | 281 to 289 ms | 220 ms: 49.6 GB on each rank | 76 to 78% |
+| Cold prefill | 1,062 to 1,092 tok/s | about 2,950 tok/s: 32.2 GFLOP a token, at half of two GPUs' 95 TFLOPS | 37% |
+
+The 225 GB/s is a device copy and the 95 TFLOPS a BF16 matrix product, both measured on the head with the pair stopped (`evidence/opt-v3/hw-spark1.txt`). Both nodes lock the GPU clock at 2,200 MHz of 3,003 (`nvidia-smi -lgc 0,2200`, the workaround for GB10 power-offs), and every number in this README was measured under that lock.
+
+Decode is bound by memory bandwidth. A round reads the 8-bit dense layers once, and 8 of 288 experts in each of 42 layers for every row it verifies. One stream runs within 15 to 21% of that bound, so no setting makes sampled prose much faster than its 34 to 35 tok/s. Text whose drafts are kept more often already runs faster on the same settings: 38.5 and 40.1 tok/s for sampled code, 44.9 and 45.3 for greedy code, on two boots (`evidence/opt-v3/e1-125/gated.json`, `e5-125/gated.json`; `tools/bench.py --prompts code`). Prefill is the wide gap, and it is the engine's kernels, not a setting: 1.2.9 reaches about 44% of the bound at 32k (above).
+
+What we tried on the 1.2.5 engine:
+
+| Change | Measured | Verdict |
+|---|---|---|
+| The engine's cache in a docker volume (`ENGINE_CACHE`) | ready after 97 to 107 s on eleven boots, against 151 s on the boot that hashed the pack | **the default** |
+| Faulting free memory in as huge pages before the load, three boots | 35.5, 35.5 and 34.7 tok/s at 1 stream and 52.0, 53.6 and 59.4 at 8, against 34.3 and 58.5 on a boot without it | not adopted: no gain outside the head's noise |
+| A boot on top of 9.4 GiB of stale page cache | 59.7 tok/s at 8 streams and 1,083 tok/s on a cold 32k prompt, the same as a clean boot | no effect, so `run.sh` does not manage the page cache |
+
+(`evidence/opt-v3/boots.tsv`; `c1-125-defrag/`, `d2-125/`, `d3-125/` and `n1-125/`, each with `bench.txt`; `p1-125/gated2.txt`.)
+
+**A busy head moves the numbers more than any of this.** The head also ran other work that day, between 0.4 and 18 of its 20 cores. The harness tagged every run with the cores other processes used while it ran:
+
+| Other work on the head | Greedy prose, 1 stream | Greedy code, 1 stream | Sampled prose, 8 streams | Cold 32k prompt |
+|---|---|---|---|---|
+| under 6 cores, no swapping | 35.3 to 36.4 tok/s | 44.5 to 45.5 | 56.2 to 59.7 | 1,062 to 1,083 tok/s |
+| 6 to 15 cores, or pages swapped out | 23.0 (one run, 13 cores) | 28.7 (one run, 9 cores) | 34.1 to 57.7 | 510 to 1,054 |
+
+(`evidence/opt-v3/p1-125/gated2.txt`, `e1-125/gated.json`, `e5-125/gated.json`; each run carries `other`, `burst` and `swapout`.) The same load takes memory from the pool when the pair starts, which is why a boot kept 7 conversations and another 16 ([Capacity](#capacity-one-shared-pool-with-kept-conversations)). The worker, which ran nothing else, had 13.5 to 16.1 GiB available once the pair was ready, and the head 9.6 to 10.5 (`mem.txt` in each run).
 
 ## Quality
 
@@ -346,11 +477,12 @@ Notes on the method:
 - **KV is BF16.** FP8 KV failed our 4-needle gate at 4 × 524,288 tokens. See [Capacity](#capacity-one-shared-pool-with-kept-conversations).
 - **No API key by default.** Requests to port 8000 are open until you set `API_KEY_FILE`.
 - **No video.** The image has no `libtfvideo`.
-- **DFlash2 is not used.** TensorFold refuses it on EXL3 packs, and its weights are CC BY-NC-ND (`evidence/decisions.tsv`, row `frame` 12:48:26).
+- **DFlash2 is not used.** 1.2.5 refuses it on EXL3 packs (`evidence/decisions.tsv`, row `frame` 12:48:26). 1.2.9 loads it beside this pack (0.57 GiB of 4-bit linears) and then refuses: `the CUDA memory budget fits no stream beside the model: one at a 1048576-token window takes 12.76 GiB of KV pages, and the budget leaves 11.52 GiB` (`evidence/opt-v3/e4-129d/run.txt`). It needs a smaller `CONTEXT`, which we did not measure.
 - **`TF_GLM_INDEX_CUDA=1` is not the default.** Its logprobs match, but our one 524k run was slower, not the 9% faster first token in TensorFold's changelog. The head was busy with other jobs during it.
 - **No `max` reasoning effort on the command line.** The native CLI takes `low`, `medium`, `high` and `xhigh`. A per-request `"max"` was not traced (`evidence/research/research-tensorfold-glm.md`, Unknowns).
 - **The archive signature is not checked.** The image build trusts the release archive's sha256. Upstream documents no key for the `.sig` (`evidence/decisions.tsv`, row `image` 13:24:53).
-- **The first boot after a download ran slower at 8 streams.** See [Quick start](#quick-start). Restart once. We saw this on 1.2.2.
+- **The first boot after a download ran slower at 8 streams.** See [Quick start](#quick-start). We saw this once, on 1.2.2, and did not reproduce it.
+- **Other work on the head costs more than any knob gives.** With 7 to 15 of the head's 20 cores busy, 8 streams fell from 59 tok/s to as low as 34, a cold 32k prompt from 1,062 tok/s to as low as 510, and a boot kept 7 conversations instead of 16. One stream held its rate up to about 6 busy cores. See [What limits the speed](#what-limits-the-speed).
 - **If one rank fails, the other stops.** Restart both with `./stop.sh && ./run.sh`.
 
 ## Troubleshooting
@@ -378,13 +510,13 @@ Run `VALIDATE_ONLY=1 ./run.sh` first. Each `REFUSE` line names the cause.
 
 ## Licenses and credits
 
-This recipe's own files are MIT (`LICENSE`). `NOTICE` lists what comes from elsewhere.
+This recipe's own files are MIT (`LICENSE`). `NOTICE` lists full third-party attribution.
 
 - **GLM-5.3-Flash.** The weights are Z.ai's, MIT (`zai-org/GLM-5.3-Flash-BF16`). Our pack copies every non-expert tensor and the `LICENSE` file from that repo, and is MIT too.
 - **exllamav3.** turboderp, MIT. It encodes the experts. The quantizer image builds it from git at `bd1f5191`. No exllamav3 code is in this repo.
-- **TensorFold.** ash hart and the TensorFold contributors, Apache-2.0. `docker/Dockerfile` installs the 1.2.5 release archive. Its `NOTICE` and `THIRD_PARTY_NOTICES.md` ship inside the archive.
+- **TensorFold & `engine-patches/`.** Ash Hart and TensorFold contributors, Apache-2.0 (`ashhart/TensorFold@81de26f64`, runtime archive `1.2.10`). `engine-patches/` is Apache-2.0 and preserves original author attribution for upstream TensorFold commits, MiaAI-Lab (`1104` ports), Robert Wojciechowski (`@wojo`, `TF_GLM_KV_SHARD`), Aevonix, Bizuayeu (`TF_GLM_DSCORES`), ultradaoto (`TF_GLM_MOE_DIRECT`), SvangenStudios, and our own patches (VEC8 FP8 MLA, `TF_GLM_FAST_LOAD`, TP-split DFlash2, CUDA graphs, device-table contiguous `.give` KV_SHARD, batched `drawShared`, and native zero-copy per-part `TF_KV_SHARE` over `TF_GLM_KV_SHARD`).
 - **quant-fidelity-suite.** Michel Belleau (malaiwah), MIT. `quality/Dockerfile` builds it from git at `cf36287c`. `quality/patches/` holds our two patches against it, with a few of its lines as context. The reference dataset `malaiwah/glm53-flash-fidelity-root-v1` is MIT.
-- **DFlash2.** `incoai/GLM-5.3-Flash-DFlash2` is CC BY-NC-ND. This recipe does not download or use it.
+- **DFlash2.** `incoai/GLM-5.3-Flash-DFlash2` (`7d74cdd8`) carries `cc-by-nc-nd-4.0` in its model-card frontmatter. `run.sh` never downloads or redistributes it; users fetch it separately under its own terms (or disable `DRAFTER` + `TF_GLM_KV_SHARD` for target MTP drafting).
 - **TR3.** `brandonmusic/GLM-5.3-Flash-tr3-4bpw` is under its own attribution license. We used it only as a measured control, served and captured from the author's repo. This repo and our pack hold none of its bytes and none of its code (`evidence/research/research-exl3-quant.md`, section 2).
 
 ## For developers
@@ -399,22 +531,25 @@ python3 -I quality/test_paired_delta.py <empty dir>     # one pairing and four r
 shellcheck -x -S warning run.sh stop.sh tools/*.sh docker/*.sh
 ```
 
-The unittest suite runs 72 tests (`evidence/run/cpu-tests.txt`).
+The unittest suite runs 79 tests (`evidence/run/cpu-tests.txt`).
 
 **Measuring.** After `./run.sh`:
 
 ```sh
 python3 tests/smoke.py --out evidence/run/smoke.json
 python3 tools/bench.py --concurrency 1,4,8 --runs 5 --warmup 1 --out evidence/run/bench.json
+python3 tools/prefill.py 8000,32000,128000 --out evidence/run/prefill.json
 python3 tools/agents.py --clients 8 --turns 4 --context-tokens 32000 --seed 1 --out evidence/run/agents.json
 python3 tools/needle.py 1000000 --out evidence/run/needle.json
 python3 tools/needle.py 500000 --concurrent 4 --out evidence/run/needles.jsonl
 python3 tools/nll.py capture --label mine --out DIR        # then: tools/nll.py compare A_DIR B_DIR
 ```
 
-`tools/bench.py` streams prose prompts with thinking off and `ignore_eos`. It reports the median stream's decode rate after its first token, the aggregate tokens over each run's wall time, and the TTFT, and it counts errors. `--warmup` runs untimed rounds first, and `--temperature 0` makes the runs greedy.
+`tools/bench.py` streams prose prompts with thinking off and `ignore_eos`; `--prompts code` sends requests for programs instead, whose drafts are kept more often. It reports the median stream's decode rate after its first token, the aggregate tokens over each run's wall time, and the TTFT, and it counts errors. `--warmup` runs untimed rounds first, and `--temperature 0` makes the runs greedy.
 
 `tools/agents.py` measures what an agent sees. For each turn it reports the TTFT, cold or resumed, the decode rate, the cached tokens and any error. Use a new `--seed` for each run, or the engine still holds the last run's documents and turn 1 is not cold. `tools/needle.py --concurrent K` sends K needles at once, each with its own haystack and code.
+
+`tools/prefill.py 8000,32000,128000` times cold prompts: each is new to the engine, and it reports the prompt tokens over the time to the first token. A prompt that comes back with cached tokens does not count.
 
 `tools/knob.sh NAME VAR=VALUE ...` restarts the pair with those overrides and writes `evidence/knobs/NAME/` with the boot logs and the argv. `tools/memwatch.sh FILE` logs MemAvailable on both nodes until you stop it.
 

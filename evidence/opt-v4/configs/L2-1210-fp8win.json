@@ -1,0 +1,44 @@
+{
+ "name": "L2-1210-fp8win",
+ "base_url": "http://127.0.0.1:8000",
+ "model": "glm-5.3-flash",
+ "stop": [
+  "bash",
+  "harness/stop.sh"
+ ],
+ "health_timeout_s": 1500,
+ "concurrency": 4,
+ "prefill_lengths": [
+  6250,
+  50000,
+  400000
+ ],
+ "note": "prefill_lengths are bench.py's nominal sizes; its filler is 0.656-0.677 real tokens a nominal one (GLM tokenizer, counted offline), so these land near 4K/32K/262K real tokens. The ledger's prefill_<L>_tokens is the server's count.",
+ "extra_body": {
+  "chat_template_kwargs": {
+   "enable_thinking": false
+  }
+ },
+ "temperature": 1.0,
+ "memory": {
+  "cap_gib": 115,
+  "probe": [
+   "bash",
+   "harness/memprobe.sh"
+  ],
+  "interval_s": 5
+ },
+ "require_ac": true,
+ "panel": "c1:6,c4:6,k1:6,g1:6",
+ "note2": "boot: harness/gboot.sh L2-1210-fp8win with 1.2.10 + a fresh engine-cache volume + the fp8 base (INDEX_CUDA stays the recipe's 0: one change)",
+ "boot_overrides": [
+  "IMAGE=tf-glm53:1.2.10",
+  "TF_VERSION=1.2.10",
+  "TF_SHA256=c335c44f81d55847a5f81d74a94ac3d09f81bd6688247cff972cf1f63fc18105",
+  "ENGINE_CACHE=tf-glm53-cache-1210",
+  "PARALLEL=4",
+  "CONTEXT=524288",
+  "KV_SHARE=0",
+  "EXTRA_ARGS=--kv-cache fp8"
+ ]
+}

@@ -90,19 +90,26 @@ snapshot_check() {
 # rank_argv RANK: the whole `docker run` argv for that rank, one word per line. Both ranks come from here, so their
 # serve args are identical (the ranks refuse to serve otherwise) and only TF_GLM_RANK and the name differ.
 rank_argv() {
-  local cache=() keys=() mount=()
+  local cache=() keys=() mount=() env=() e extra=()
   [[ -n $PROMPT_CACHE_GIB ]] && cache=(--prompt-cache-gib "$PROMPT_CACHE_GIB")
-  [[ -n $API_KEY_FILE ]] && { keys=(--api-key-file "$API_KEY_FILE"); mount=(-v "$API_KEY_FILE:$API_KEY_FILE:ro"); }
+  [[ -n $ENGINE_CACHE ]] && mount+=(-v "$ENGINE_CACHE:/root/.cache/tensorfold")
+  for e in $EXTRA_ENV; do env+=(-e "$e"); done
+  read -ra extra <<<"$EXTRA_ARGS"
+  if [[ -n $DRAFTER ]]; then
+    local ddir=$HF_CACHE/hub/models--${DRAFTER//\//--}
+    mount+=(-v "$ddir:$ddir:ro"); extra+=(--drafter "$ddir/snapshots/$DRAFTER_REVISION" --drafter-bits "$DRAFTER_BITS")
+  fi
+  [[ -n $API_KEY_FILE ]] && { keys=(--api-key-file "$API_KEY_FILE"); mount+=(-v "$API_KEY_FILE:$API_KEY_FILE:ro"); }
   printf '%s\n' docker run -d --name "$NAME_PREFIX$1" --label "$LABEL" \
     --gpus all --network host --ipc host --device /dev/infiniband --ulimit memlock=-1 --ulimit core=0 --oom-score-adj 1000 \
     -v "$REPO_DIR:$REPO_DIR:ro" "${mount[@]}" \
     -e "TF_GLM_RANK=$1" -e TF_GLM_WORLD=2 -e "NCCL_COMM_ID=$HEAD_IP:$NCCL_PORT" -e "NCCL_SOCKET_IFNAME=$IFACE" \
     -e "NCCL_IB_HCA=$HCA" -e "TF_ROCE_HCA=$ROCE_HCA" \
     -e "TF_GLM_DENSE_BITS=$DENSE_BITS" -e "TF_GLM_HEAD_BITS=$HEAD_BITS" -e "TENSORFOLD_MEMORY_RESERVE_GIB=$MEMORY_RESERVE_GIB" \
-    -e "TF_GLM_INDEX_CUDA=$INDEX_CUDA" -e "TF_KV_SHARE=$KV_SHARE" \
+    -e "TF_GLM_INDEX_CUDA=$INDEX_CUDA" -e "TF_KV_SHARE=$KV_SHARE" "${env[@]}" \
     "$IMAGE" tensorfold-native serve "$SNAPSHOT" --host 0.0.0.0 --port "$PORT" --name "$SERVED_NAME" \
     --context "$CONTEXT" --parallel "$PARALLEL" --vision --vision-video-tokens "$VIDEO_TOKENS" \
-    "${cache[@]}" "${keys[@]}" --no-update-check
+    "${cache[@]}" "${keys[@]}" "${extra[@]}" --no-update-check
 }
 
 logs_tail() {
@@ -143,6 +150,11 @@ check_config() {
   [[ -z $API_KEY_FILE || ($API_KEY_FILE == /* && $API_KEY_FILE != *[[:space:]]*) ]] ||
     die "API_KEY_FILE=$API_KEY_FILE must be an absolute path without spaces"
   [[ $HF_CACHE == /* && $HF_CACHE != *[[:space:]]* ]] || die "HF_CACHE=$HF_CACHE must be an absolute path without spaces"
+  [[ -z $ENGINE_CACHE || $ENGINE_CACHE =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] ||
+    die "ENGINE_CACHE=$ENGINE_CACHE must be a docker volume name"
+  for v in $EXTRA_ENV; do
+    [[ $v =~ ^[A-Z][A-Z0-9_]*=[^[:space:]]*$ ]] || die "EXTRA_ENV word '$v' is not VAR=VALUE"
+  done
   REPO_DIR=$HF_CACHE/hub/models--${MODEL//\//--}
   SNAPSHOT=$REPO_DIR/snapshots/$REVISION
 }
@@ -373,7 +385,7 @@ step_wait() {
     sleep 5
   done
   echo "ready after $((SECONDS - t0))s"
-  docker logs "${NAME_PREFIX}0" 2>&1 | grep -E '^\[tensorfold\] (warning|CUDA|serving)' || true
+  docker logs "${NAME_PREFIX}0" 2>&1 | grep -E '^(\[tensorfold\] )?(warning|CUDA|serving)' || true
   endpoint
 }
 
